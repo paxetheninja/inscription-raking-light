@@ -122,7 +122,14 @@ Pinned to Flutter `3.38.8` to match the development environment.
   with frame count + on-disk size; "Share zip" bundles `raw/` + `preview/`
   + `sidecar.json` into a temp `.zip` and opens the system share sheet.
   Stack tab session tiles gain a 3-dot menu for **Rename** + **Delete**.
-- **v0.7** — DNG capture where supported; rough photometric-stereo normal map.
+- **v0.7** ✅ — Lambertian photometric-stereo normal map. When every frame
+  in the session has a light direction set (Capture tab compass picker),
+  the pipeline solves a 3×3 system per pixel and emits an RGB normal map
+  encoded with the standard `(n + 1) / 2` convention. Throws with a
+  human-readable explanation when light directions are coplanar.
+- **v0.8** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
+  raw on iOS via custom platform channels — significant native work, kept
+  as its own version).
 
 ## Status
 

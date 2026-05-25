@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'clahe.dart';
 import 'fusion.dart';
+import 'photometric_stereo.dart';
 import 'retinex.dart';
 
 /// Per-pixel reductions across a stack of grayscale frames, all sharing the
@@ -33,6 +34,7 @@ class StackInput {
     required this.width,
     required this.height,
     required this.frames,
+    this.lights,
   });
 
   final int width;
@@ -40,6 +42,10 @@ class StackInput {
 
   /// One Uint8List per frame, each of length width * height (grayscale).
   final List<Uint8List> frames;
+
+  /// Optional per-frame light direction vectors (in image coords). When
+  /// provided, the pipeline also computes a photometric-stereo normal map.
+  final List<LightVec>? lights;
 }
 
 /// Compute max / min / range / stddev across the stack on a background isolate.
@@ -109,12 +115,21 @@ class StackPipelineOutput {
     required this.fusion,
     required this.fusionClahe,
     required this.fusionRetinex,
+    this.normalMap,
+    this.normalMapNote,
   });
 
   final StackReductions reductions;
   final Uint8List fusion;
   final Uint8List fusionClahe;
   final Uint8List fusionRetinex;
+
+  /// RGB normal map (length = width * height * 3) when photometric stereo
+  /// could be computed. Null otherwise; see [normalMapNote] for why.
+  final Uint8List? normalMap;
+
+  /// Reason the normal map is absent — e.g. "Light directions are coplanar."
+  final String? normalMapNote;
 
   int get width => reductions.width;
   int get height => reductions.height;
@@ -129,10 +144,39 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
   final fusion = exposureFusion(input.frames, input.width, input.height);
   final fusionClahe = clahe(fusion, input.width, input.height);
   final fusionRetinex = multiScaleRetinex(fusion, input.width, input.height);
+
+  Uint8List? normalMap;
+  String? normalMapNote;
+  final lights = input.lights;
+  if (lights == null) {
+    normalMapNote = 'Tag each frame with a light direction on the Capture tab '
+        'to enable photometric-stereo normal-map estimation.';
+  } else if (lights.length != input.frames.length) {
+    normalMapNote = 'Light directions are only set on '
+        '${lights.length}/${input.frames.length} frames — set them on all '
+        'frames to compute the normal map.';
+  } else if (input.frames.length < 3) {
+    normalMapNote = 'Need ≥ 3 frames with light directions to compute a '
+        'normal map (got ${input.frames.length}).';
+  } else {
+    try {
+      normalMap = photometricStereoNormalMap(PhotometricStereoInput(
+        width: input.width,
+        height: input.height,
+        frames: input.frames,
+        lights: lights,
+      ));
+    } catch (e) {
+      normalMapNote = '$e';
+    }
+  }
+
   return StackPipelineOutput(
     reductions: reductions,
     fusion: fusion,
     fusionClahe: fusionClahe,
     fusionRetinex: fusionRetinex,
+    normalMap: normalMap,
+    normalMapNote: normalMapNote,
   );
 }

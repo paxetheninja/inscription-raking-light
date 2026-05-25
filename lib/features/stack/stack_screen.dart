@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/image_ops/photometric_stereo.dart';
 import '../../core/image_ops/preview_loader.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
@@ -231,11 +232,34 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         }
       }
 
-      setState(() => _status = 'Computing reductions + fusion + CLAHE + Retinex…');
+      // Build per-frame light vectors from sidecar metadata, if every frame
+      // has both an azimuth and an elevation set. Anything less is treated
+      // as "no lights" — the pipeline records why the normal map is absent.
+      final sc = await store.readSidecar(widget.sessionId);
+      List<LightVec>? lights;
+      if (sc != null && sc.frames.length == previews.length) {
+        final maybe = <LightVec>[];
+        var allSet = true;
+        for (final f in sc.frames) {
+          final az = f.lightAzimuthDeg;
+          final el = f.lightElevationDeg;
+          if (az == null || el == null) {
+            allSet = false;
+            break;
+          }
+          maybe.add(LightVec.fromCompass(az, el));
+        }
+        if (allSet) lights = maybe;
+      }
+
+      setState(() => _status = lights != null
+          ? 'Computing reductions + fusion + CLAHE + Retinex + normal map…'
+          : 'Computing reductions + fusion + CLAHE + Retinex…');
       final result = await runStackPipeline(StackInput(
         width: w,
         height: h,
         frames: previews.map((p) => p.bytes).toList(),
+        lights: lights,
       ));
 
       setState(() {
@@ -279,6 +303,13 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     ];
     for (final (name, bytes) in entries) {
       await store.writePreview(widget.sessionId, name, bytes);
+    }
+    if (pipe.normalMap != null) {
+      await store.writePreview(
+        widget.sessionId,
+        'normal-map.png',
+        rgbToPng(pipe.normalMap!, pipe.width, pipe.height),
+      );
     }
   }
 

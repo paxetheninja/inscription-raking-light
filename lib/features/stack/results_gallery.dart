@@ -57,6 +57,15 @@ class _ResultsGalleryScreenState extends State<ResultsGalleryScreen> {
     final w = p.width;
     final h = p.height;
     return [
+      if (p.normalMap != null)
+        _GalleryPage(
+          label: 'normal map',
+          description:
+              'Lambertian photometric stereo using the per-frame light '
+              'directions from Capture. RGB = (n + 1) / 2 — a flat, '
+              'forward-facing surface is around (128, 128, 255).',
+          png: rgbToPng(p.normalMap!, w, h),
+        ),
       _GalleryPage(
         label: 'fusion + CLAHE',
         description:

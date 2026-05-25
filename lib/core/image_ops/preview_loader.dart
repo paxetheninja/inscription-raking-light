@@ -84,3 +84,14 @@ Uint8List grayToPng(Uint8List gray, int width, int height) {
   );
   return Uint8List.fromList(img.encodePng(image));
 }
+
+/// Encode a row-major RGB buffer (length = width * height * 3) as a PNG.
+Uint8List rgbToPng(Uint8List rgb, int width, int height) {
+  final image = img.Image.fromBytes(
+    width: width,
+    height: height,
+    bytes: rgb.buffer,
+    numChannels: 3,
+  );
+  return Uint8List.fromList(img.encodePng(image));
+}

@@ -1,0 +1,150 @@
+name: iOS Release (signed)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Tag-only signed iOS build. Reads signing material from GitHub Secrets;
+# see docs/IOS_SIGNING.md for the one-time Apple-side + Secrets setup.
+
+jobs:
+  build-signed:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required secrets are present
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${IOS_DIST_CERT_P12:-}" ] && missing+=("IOS_DIST_CERT_P12")
+          [ -z "${IOS_DIST_CERT_PASSWORD:-}" ] && missing+=("IOS_DIST_CERT_PASSWORD")
+          [ -z "${IOS_PROVISIONING_PROFILE:-}" ] && missing+=("IOS_PROVISIONING_PROFILE")
+          [ -z "${IOS_TEAM_ID:-}" ] && missing+=("IOS_TEAM_ID")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Missing required secrets: ${missing[*]}" >&2
+            echo "See docs/IOS_SIGNING.md for setup instructions." >&2
+            exit 1
+          fi
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.38.8'
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter analyze
+        run: flutter analyze
+
+      - name: flutter test
+        run: flutter test
+
+      - name: Install signing certificate and provisioning profile
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/dist.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          echo "$IOS_DIST_CERT_P12" | base64 --decode > "$CERT_PATH"
+          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -P "$IOS_DIST_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          existing=$(security list-keychain -d user | sed -E 's/^[[:space:]]*"(.+)"[[:space:]]*$/\1/' | tr '\n' ' ')
+          security list-keychain -d user -s $existing "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          BUNDLE_ID="${APP_ID#*.}"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+
+          echo "PROFILE_UUID=$UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "PROFILE_BUNDLE_ID=$BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "Installed profile '$NAME' for $BUNDLE_ID (UUID $UUID)."
+
+      - name: Write Signing.xcconfig and ExportOptions.plist
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > ios/Flutter/Signing.xcconfig <<EOF
+          CODE_SIGN_STYLE = Manual
+          DEVELOPMENT_TEAM = $IOS_TEAM_ID
+          PROVISIONING_PROFILE_SPECIFIER = $PROFILE_NAME
+          CODE_SIGN_IDENTITY = Apple Distribution
+          EOF
+          cat ios/Flutter/Signing.xcconfig
+
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>$IOS_TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$PROFILE_BUNDLE_ID</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+          cat ios/ExportOptions.plist
+
+      - name: Build signed IPA
+        run: |
+          flutter build ipa --release \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: inscription-raking-light-${{ github.ref_name }}-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: error
+
+      - name: Clean up keychain and profiles
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID:-unknown}.mobileprovision" || true

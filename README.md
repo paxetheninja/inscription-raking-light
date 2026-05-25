@@ -91,8 +91,14 @@ CI on every push / PR to `main`:
 
 - **Android** — `ubuntu-latest`, builds a debug APK and uploads it as an artifact.
 - **iOS** — `macos-latest`, builds an unsigned `Runner.app` and uploads it as
-  an artifact. Sideload via Xcode, or wire up signing secrets later for IPA /
-  TestFlight.
+  an artifact. Useful as a smoke test and for sideloading via Xcode without
+  Apple Developer setup.
+
+On `v*` tag pushes:
+
+- **iOS Release (signed)** — `macos-latest`, builds a **signed ad-hoc IPA**
+  using credentials stored in GitHub Secrets. See
+  [`docs/IOS_SIGNING.md`](docs/IOS_SIGNING.md) for the one-time setup.
 
 Pinned to Flutter `3.38.8` to match the development environment.
 

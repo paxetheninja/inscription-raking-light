@@ -153,6 +153,14 @@ class SessionStore {
     return SidecarV1.fromJson(jsonDecode(raw) as Map<String, dynamic>);
   }
 
+  /// Load an existing session into a mutable [Session]. Returns null if no
+  /// sidecar was found for [sessionId].
+  Future<Session?> loadSession(String sessionId) async {
+    final sc = await readSidecar(sessionId);
+    if (sc == null) return null;
+    return Session.fromSidecar(sc);
+  }
+
   Future<List<File>> listFrames(String sessionId) async {
     final dir = await sessionDir(sessionId);
     final raw = Directory(p.join(dir.path, 'raw'));

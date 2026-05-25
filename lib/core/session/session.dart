@@ -12,6 +12,33 @@ class Session {
     this.notes,
   });
 
+  /// Reconstruct an in-memory [Session] from a previously-written sidecar.
+  /// Lets the capture flow resume an existing session.
+  factory Session.fromSidecar(SidecarV1 sc) {
+    return Session(
+      id: sc.sessionId,
+      label: sc.label,
+      capturedAt:
+          DateTime.tryParse(sc.capturedAt) ?? DateTime.now().toUtc(),
+      deviceModel: sc.deviceModel,
+      frames: sc.frames
+          .map((f) => SessionFrame(
+                filename:
+                    f.file.startsWith('raw/') ? f.file.substring(4) : f.file,
+                capturedAt:
+                    DateTime.fromMillisecondsSinceEpoch(f.timestampMs),
+                lightAzimuthDeg: f.lightAzimuthDeg,
+                lightElevationDeg: f.lightElevationDeg,
+                iso: f.iso,
+                exposureUs: f.exposureUs,
+                focusDistanceM: f.focusDistanceM,
+              ))
+          .toList(),
+      scaleMmPerPixel: sc.scaleMmPerPixel,
+      notes: sc.notes,
+    );
+  }
+
   /// Stable session id, e.g. `s_20260525T103045_4f2a`.
   final String id;
 

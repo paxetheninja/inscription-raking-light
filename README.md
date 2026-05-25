@@ -1,7 +1,8 @@
-# inscription-raking-light
+# Stela
 
-Mobile companion for **raking-light documentation of inscriptions** — Flutter app
-targeting Android and iOS, built via GitHub Actions.
+Mobile companion for **raking-light documentation of inscriptions** — Flutter
+app targeting Android and iOS, built via GitHub Actions. Repo:
+`paxetheninja/inscription-raking-light`. App display name: **Stela**.
 
 "Streiflicht" is German for raking light: a low-angle illumination technique
 that reveals incised letterforms and surface detail invisible under flat light.

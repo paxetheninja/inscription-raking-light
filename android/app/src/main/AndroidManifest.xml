@@ -4,7 +4,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:label="inscription_raking_light"
+        android:label="Stela"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

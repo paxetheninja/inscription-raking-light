@@ -243,7 +243,10 @@ class _ModeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SegmentedButton<_Mode>(
           segments: const [
@@ -252,21 +255,28 @@ class _ModeBar extends StatelessWidget {
           ],
           selected: {mode},
           onSelectionChanged: (s) => onModeChanged(s.first),
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
         ),
-        const SizedBox(width: 8),
-        TextButton.icon(
+        IconButton(
+          tooltip: 'Clear markers',
           onPressed: onClear,
           icon: const Icon(Icons.refresh),
-          label: const Text('Clear'),
+          visualDensity: VisualDensity.compact,
         ),
-        const Spacer(),
         if (scale != null)
           Chip(
-            avatar: const Icon(Icons.straighten, size: 16),
-            label: Text('${scale!.toStringAsFixed(5)} mm/px'),
+            avatar: const Icon(Icons.straighten, size: 14),
+            label: Text('${scale!.toStringAsPrecision(3)} mm/px'),
+            visualDensity: VisualDensity.compact,
           )
         else
-          const Chip(label: Text('uncalibrated')),
+          const Chip(
+            label: Text('uncalibrated'),
+            visualDensity: VisualDensity.compact,
+          ),
       ],
     );
   }

@@ -6,6 +6,7 @@ library;
 class SidecarV1 {
   const SidecarV1({
     required this.sessionId,
+    required this.label,
     required this.capturedAt,
     required this.deviceModel,
     required this.frames,
@@ -15,6 +16,9 @@ class SidecarV1 {
 
   /// Stable session id (ulid).
   final String sessionId;
+
+  /// User-supplied label (stone name, find no., …).
+  final String label;
 
   /// ISO-8601 capture start.
   final String capturedAt;
@@ -32,12 +36,25 @@ class SidecarV1 {
   Map<String, dynamic> toJson() => {
         'schema': 'inscription-raking-light/sidecar@1',
         'session_id': sessionId,
+        'label': label,
         'captured_at': capturedAt,
         'device_model': deviceModel,
         if (scaleMmPerPixel != null) 'scale_mm_per_pixel': scaleMmPerPixel,
         if (notes != null) 'notes': notes,
         'frames': frames.map((f) => f.toJson()).toList(),
       };
+
+  static SidecarV1 fromJson(Map<String, dynamic> j) => SidecarV1(
+        sessionId: j['session_id'] as String,
+        label: (j['label'] as String?) ?? '',
+        capturedAt: j['captured_at'] as String,
+        deviceModel: j['device_model'] as String? ?? '',
+        scaleMmPerPixel: (j['scale_mm_per_pixel'] as num?)?.toDouble(),
+        notes: j['notes'] as String?,
+        frames: ((j['frames'] as List?) ?? const [])
+            .map((e) => SidecarFrame.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
 }
 
 class SidecarFrame {
@@ -73,4 +90,14 @@ class SidecarFrame {
         if (exposureUs != null) 'exposure_us': exposureUs,
         if (focusDistanceM != null) 'focus_distance_m': focusDistanceM,
       };
+
+  static SidecarFrame fromJson(Map<String, dynamic> j) => SidecarFrame(
+        file: j['file'] as String,
+        timestampMs: (j['timestamp_ms'] as num).toInt(),
+        lightAzimuthDeg: (j['light_azimuth_deg'] as num?)?.toDouble(),
+        lightElevationDeg: (j['light_elevation_deg'] as num?)?.toDouble(),
+        iso: (j['iso'] as num?)?.toInt(),
+        exposureUs: (j['exposure_us'] as num?)?.toInt(),
+        focusDistanceM: (j['focus_distance_m'] as num?)?.toDouble(),
+      );
 }

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Used to capture raking-light bursts of inscriptions.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Used to save exported raking-light session bundles.</string>
 </dict>
 </plist>

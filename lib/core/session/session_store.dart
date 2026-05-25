@@ -1,0 +1,117 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import '../sidecar/sidecar_schema.dart';
+import 'session.dart';
+
+/// Reads and writes [Session]s under `<app-docs>/sessions/`.
+class SessionStore {
+  SessionStore({Directory? rootOverride}) : _rootOverride = rootOverride;
+
+  final Directory? _rootOverride;
+
+  Future<Directory> _root() async {
+    if (_rootOverride != null) return _rootOverride;
+    final docs = await getApplicationDocumentsDirectory();
+    final root = Directory(p.join(docs.path, 'sessions'));
+    if (!await root.exists()) {
+      await root.create(recursive: true);
+    }
+    return root;
+  }
+
+  Future<Directory> sessionDir(String sessionId) async {
+    final root = await _root();
+    final dir = Directory(p.join(root.path, sessionId));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final raw = Directory(p.join(dir.path, 'raw'));
+    if (!await raw.exists()) await raw.create(recursive: true);
+    return dir;
+  }
+
+  Future<File> frameFile(String sessionId, String filename) async {
+    final dir = await sessionDir(sessionId);
+    return File(p.join(dir.path, 'raw', filename));
+  }
+
+  Future<File> sidecarFile(String sessionId) async {
+    final dir = await sessionDir(sessionId);
+    return File(p.join(dir.path, 'sidecar.json'));
+  }
+
+  Future<Session> createSession({
+    required String label,
+    required String deviceModel,
+    DateTime? now,
+  }) async {
+    final t = now ?? DateTime.now();
+    final id = _generateId(t);
+    final session = Session(
+      id: id,
+      label: label,
+      capturedAt: t,
+      deviceModel: deviceModel,
+      frames: [],
+    );
+    await sessionDir(id);
+    await writeSidecar(session);
+    return session;
+  }
+
+  Future<void> writeSidecar(Session session) async {
+    final file = await sidecarFile(session.id);
+    final json = const JsonEncoder.withIndent('  ')
+        .convert(session.toSidecar().toJson());
+    await file.writeAsString(json);
+  }
+
+  Future<SidecarV1?> readSidecar(String sessionId) async {
+    final f = await sidecarFile(sessionId);
+    if (!await f.exists()) return null;
+    final raw = await f.readAsString();
+    return SidecarV1.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+  }
+
+  Future<List<File>> listFrames(String sessionId) async {
+    final dir = await sessionDir(sessionId);
+    final raw = Directory(p.join(dir.path, 'raw'));
+    if (!await raw.exists()) return const [];
+    final files = (await raw.list().toList()).whereType<File>().toList()
+      ..sort((a, b) => p.basename(a.path).compareTo(p.basename(b.path)));
+    return files;
+  }
+
+  Future<List<String>> listSessionIds() async {
+    final root = await _root();
+    final entries = await root.list().toList();
+    final ids = <String>[];
+    for (final e in entries) {
+      if (e is Directory) ids.add(p.basename(e.path));
+    }
+    ids.sort((a, b) => b.compareTo(a));
+    return ids;
+  }
+
+  /// Build the next frame filename (e.g. `0001.jpg`) for a session.
+  String nextFrameName(Session session, {String extension = 'jpg'}) {
+    final n = session.frames.length + 1;
+    return '${n.toString().padLeft(4, '0')}.$extension';
+  }
+
+  static final _rand = math.Random();
+
+  static String _generateId(DateTime t) {
+    final utc = t.toUtc();
+    String two(int n) => n.toString().padLeft(2, '0');
+    final stamp =
+        '${utc.year}${two(utc.month)}${two(utc.day)}T${two(utc.hour)}${two(utc.minute)}${two(utc.second)}';
+    final suffix = (_rand.nextInt(0xFFFF))
+        .toRadixString(16)
+        .padLeft(4, '0');
+    return 's_${stamp}_$suffix';
+  }
+}

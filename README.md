@@ -98,13 +98,13 @@ Pinned to Flutter `3.38.8` to match the development environment.
 
 ## Roadmap
 
-- **v0.1** _(this scaffold)_ — four-tab shell, CI green on both platforms,
-  sidecar schema drafted.
-- **v0.2** — camera wiring: locked exposure / WB burst capture, gallery list,
-  IMU light-direction "ping".
-- **v0.3** — on-device preview stack (max / min / range / stddev) in an
-  isolate, side-by-side viewer.
-- **v0.4** — fusion + Retinex + CLAHE on the preview pipeline.
+- **v0.1** ✅ — four-tab shell, CI green on both platforms, sidecar schema drafted.
+- **v0.2** ✅ — camera wiring: AE/AF lock, session folders, JPEG capture, sidecar
+  written on every shutter. IMU light-direction "ping" deferred to v0.4.
+- **v0.3** ✅ — on-device preview reductions (max / min / range / stddev) running
+  in an `Isolate`, 2×2 grid viewer.
+- **v0.4** — exposure fusion + multi-scale Retinex + CLAHE on the preview
+  pipeline; IMU light-direction ping.
 - **v0.5** — scale calibration + measurement overlay.
 - **v0.6** — export bundle (zip with raw frames + previews + sidecar) +
   share sheet.
@@ -112,5 +112,7 @@ Pinned to Flutter `3.38.8` to match the development environment.
 
 ## Status
 
-Early scaffold — feature screens are placeholders. Build chain (local +
-GitHub Actions) is the deliverable of v0.1.
+v0.3 — usable on-device. Capture a burst from the Capture tab, then open the
+session on the Stack tab and tap "Compute reductions" to view max / min /
+range / stddev of the downsampled stack. All session data persists under the
+app's documents directory as `sessions/<id>/raw/*.jpg` + `sidecar.json`.

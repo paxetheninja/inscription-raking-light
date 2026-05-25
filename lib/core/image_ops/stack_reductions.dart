@@ -2,6 +2,10 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'clahe.dart';
+import 'fusion.dart';
+import 'retinex.dart';
+
 /// Per-pixel reductions across a stack of grayscale frames, all sharing the
 /// same width and height.
 class StackReductions {
@@ -93,5 +97,42 @@ StackReductions computeStackReductionsSync(StackInput input) {
     minImg: minImg,
     rangeImg: rangeImg,
     stddevImg: stddevImg,
+  );
+}
+
+/// Full enhancement pipeline: reductions + Mertens-style fusion + CLAHE on the
+/// fusion + multi-scale Retinex on the fusion. All seven outputs are computed
+/// in a single background isolate to amortise the cost of copying frames.
+class StackPipelineOutput {
+  const StackPipelineOutput({
+    required this.reductions,
+    required this.fusion,
+    required this.fusionClahe,
+    required this.fusionRetinex,
+  });
+
+  final StackReductions reductions;
+  final Uint8List fusion;
+  final Uint8List fusionClahe;
+  final Uint8List fusionRetinex;
+
+  int get width => reductions.width;
+  int get height => reductions.height;
+}
+
+Future<StackPipelineOutput> runStackPipeline(StackInput input) {
+  return Isolate.run(() => runStackPipelineSync(input));
+}
+
+StackPipelineOutput runStackPipelineSync(StackInput input) {
+  final reductions = computeStackReductionsSync(input);
+  final fusion = exposureFusion(input.frames, input.width, input.height);
+  final fusionClahe = clahe(fusion, input.width, input.height);
+  final fusionRetinex = multiScaleRetinex(fusion, input.width, input.height);
+  return StackPipelineOutput(
+    reductions: reductions,
+    fusion: fusion,
+    fusionClahe: fusionClahe,
+    fusionRetinex: fusionRetinex,
   );
 }

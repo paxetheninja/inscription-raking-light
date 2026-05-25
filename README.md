@@ -109,16 +109,30 @@ Pinned to Flutter `3.38.8` to match the development environment.
   written on every shutter. IMU light-direction "ping" deferred to v0.4.
 - **v0.3** ✅ — on-device preview reductions (max / min / range / stddev) running
   in an `Isolate`, 2×2 grid viewer.
-- **v0.4** — exposure fusion + multi-scale Retinex + CLAHE on the preview
-  pipeline; IMU light-direction ping.
-- **v0.5** — scale calibration + measurement overlay.
+- **v0.4** ✅ — Mertens-style exposure fusion, multi-scale Retinex (separable
+  Gaussian), and CLAHE applied to the fusion. All seven outputs computed in
+  one isolate pass. Manual 8-azimuth × 3-elevation light-direction picker on
+  the Capture tab, persisted per frame in the sidecar.
+- **v0.5** ✅ — scale calibration: tap two points on a ruler in a captured
+  frame, enter the real-world distance in mm, the app writes
+  `scale_mm_per_pixel` to the sidecar. Measure mode reads it back to show
+  on-image distances in mm.
 - **v0.6** — export bundle (zip with raw frames + previews + sidecar) +
   share sheet.
 - **v0.7** — DNG capture where supported; rough photometric-stereo normal map.
 
 ## Status
 
-v0.3 — usable on-device. Capture a burst from the Capture tab, then open the
-session on the Stack tab and tap "Compute reductions" to view max / min /
-range / stddev of the downsampled stack. All session data persists under the
-app's documents directory as `sessions/<id>/raw/*.jpg` + `sidecar.json`.
+v0.5 — the on-device loop works end-to-end:
+
+1. **Capture** a burst with AE/AF locked, optionally tagging each frame with
+   a coarse light direction (8 compass azimuths × 3 elevations).
+2. **Stack** the session and run the full enhancement pipeline: per-pixel
+   reductions, Mertens-style fusion, fusion+CLAHE, fusion+Retinex.
+3. **Measure** by tapping two points on a ruler in a captured frame, enter
+   the real distance in mm, then switch to Measure mode to read letter
+   heights and stroke widths off the image.
+
+All session data persists under the app's documents directory as
+`sessions/<id>/raw/*.jpg` + `sidecar.json` (now including light direction
+per frame and `scale_mm_per_pixel` per session).

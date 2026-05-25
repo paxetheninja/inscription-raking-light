@@ -38,6 +38,8 @@ class Session {
             .map((f) => SidecarFrame(
                   file: 'raw/${f.filename}',
                   timestampMs: f.capturedAt.millisecondsSinceEpoch,
+                  lightAzimuthDeg: f.lightAzimuthDeg,
+                  lightElevationDeg: f.lightElevationDeg,
                   iso: f.iso,
                   exposureUs: f.exposureUs,
                   focusDistanceM: f.focusDistanceM,
@@ -50,6 +52,8 @@ class SessionFrame {
   const SessionFrame({
     required this.filename,
     required this.capturedAt,
+    this.lightAzimuthDeg,
+    this.lightElevationDeg,
     this.iso,
     this.exposureUs,
     this.focusDistanceM,
@@ -58,6 +62,8 @@ class SessionFrame {
   /// File name within the session's `raw/` folder, e.g. `0001.jpg`.
   final String filename;
   final DateTime capturedAt;
+  final double? lightAzimuthDeg;
+  final double? lightElevationDeg;
   final int? iso;
   final int? exposureUs;
   final double? focusDistanceM;

@@ -119,7 +119,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   bool _busy = false;
   String? _status;
   String? _error;
-  StackReductions? _reductions;
+  StackPipelineOutput? _pipeline;
 
   Future<void> _compute() async {
     final store = ref.read(sessionStoreProvider);
@@ -127,7 +127,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       _busy = true;
       _error = null;
       _status = 'Loading frames…';
-      _reductions = null;
+      _pipeline = null;
     });
     try {
       final frames = await store.listFrames(widget.sessionId);
@@ -152,15 +152,15 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         }
       }
 
-      setState(() => _status = 'Computing reductions…');
-      final result = await computeStackReductions(StackInput(
+      setState(() => _status = 'Computing reductions + fusion + CLAHE + Retinex…');
+      final result = await runStackPipeline(StackInput(
         width: w,
         height: h,
         frames: previews.map((p) => p.bytes).toList(),
       ));
 
       setState(() {
-        _reductions = result;
+        _pipeline = result;
         _status = 'Done (${frames.length} frames, $w×$h).';
       });
     } catch (e) {
@@ -195,9 +195,9 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
             ],
             const SizedBox(height: 16),
             Expanded(
-              child: _reductions == null
+              child: _pipeline == null
                   ? _FrameList(sessionId: widget.sessionId)
-                  : _ReductionsGrid(reductions: _reductions!),
+                  : _PipelineGrid(pipeline: _pipeline!),
             ),
           ],
         ),
@@ -239,19 +239,23 @@ class _FrameList extends ConsumerWidget {
   }
 }
 
-class _ReductionsGrid extends StatelessWidget {
-  const _ReductionsGrid({required this.reductions});
+class _PipelineGrid extends StatelessWidget {
+  const _PipelineGrid({required this.pipeline});
 
-  final StackReductions reductions;
+  final StackPipelineOutput pipeline;
 
   @override
   Widget build(BuildContext context) {
-    final r = reductions;
+    final p = pipeline;
+    final r = p.reductions;
     final items = <(String, Uint8List)>[
-      ('max', grayToPng(r.maxImg, r.width, r.height)),
-      ('min', grayToPng(r.minImg, r.width, r.height)),
+      ('fusion + CLAHE', grayToPng(p.fusionClahe, p.width, p.height)),
+      ('fusion + Retinex', grayToPng(p.fusionRetinex, p.width, p.height)),
+      ('fusion', grayToPng(p.fusion, p.width, p.height)),
       ('range', grayToPng(r.rangeImg, r.width, r.height)),
       ('stddev', grayToPng(r.stddevImg, r.width, r.height)),
+      ('max', grayToPng(r.maxImg, r.width, r.height)),
+      ('min', grayToPng(r.minImg, r.width, r.height)),
     ];
     return GridView.count(
       crossAxisCount: 2,

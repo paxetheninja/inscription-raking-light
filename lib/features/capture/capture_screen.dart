@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/session/session.dart';
 import '../../core/session/session_providers.dart';
+import 'light_direction.dart';
 
 /// Capture tab — idle until the user starts a session, then opens the camera
 /// with auto-exposure / auto-focus. The "Lock" button freezes both so the
@@ -28,6 +29,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   bool _busy = false;
   String? _error;
   String? _lastShotPath;
+  LightDirection _light = const LightDirection();
 
   @override
   void initState() {
@@ -132,6 +134,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       s.frames.add(SessionFrame(
         filename: name,
         capturedAt: DateTime.now(),
+        lightAzimuthDeg: _light.azimuthDeg,
+        lightElevationDeg: _light.elevationDeg,
       ));
       await store.writeSidecar(s);
       _lastShotPath = dest.path;
@@ -203,6 +207,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       busy: _busy,
       error: _error,
       lastShotPath: _lastShotPath,
+      light: _light,
+      onLightChanged: (l) => setState(() => _light = l),
       onShutter: _capture,
       onLock: _toggleLock,
       onEnd: _endSession,
@@ -256,6 +262,8 @@ class _ActiveView extends StatelessWidget {
     required this.busy,
     required this.error,
     required this.lastShotPath,
+    required this.light,
+    required this.onLightChanged,
     required this.onShutter,
     required this.onLock,
     required this.onEnd,
@@ -267,6 +275,8 @@ class _ActiveView extends StatelessWidget {
   final bool busy;
   final String? error;
   final String? lastShotPath;
+  final LightDirection light;
+  final ValueChanged<LightDirection> onLightChanged;
   final VoidCallback onShutter;
   final VoidCallback onLock;
   final VoidCallback onEnd;
@@ -304,6 +314,8 @@ class _ActiveView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Expanded(child: preview),
+          const SizedBox(height: 8),
+          LightDirectionPicker(value: light, onChanged: onLightChanged),
           if (error != null) ...[
             const SizedBox(height: 8),
             Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),

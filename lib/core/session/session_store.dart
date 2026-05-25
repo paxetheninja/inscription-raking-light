@@ -69,6 +69,26 @@ class SessionStore {
     await file.writeAsString(json);
   }
 
+  Future<void> updateScale(String sessionId, double mmPerPixel) async {
+    final sc = await readSidecar(sessionId);
+    if (sc == null) {
+      throw StateError('No sidecar for session $sessionId');
+    }
+    final updated = SidecarV1(
+      sessionId: sc.sessionId,
+      label: sc.label,
+      capturedAt: sc.capturedAt,
+      deviceModel: sc.deviceModel,
+      scaleMmPerPixel: mmPerPixel,
+      notes: sc.notes,
+      frames: sc.frames,
+    );
+    final f = await sidecarFile(sessionId);
+    final json =
+        const JsonEncoder.withIndent('  ').convert(updated.toJson());
+    await f.writeAsString(json);
+  }
+
   Future<SidecarV1?> readSidecar(String sessionId) async {
     final f = await sidecarFile(sessionId);
     if (!await f.exists()) return null;

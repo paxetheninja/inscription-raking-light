@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/image_ops/preview_loader.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
+import 'results_gallery.dart';
 
 class StackScreen extends ConsumerWidget {
   const StackScreen({super.key});
@@ -163,11 +163,23 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         _pipeline = result;
         _status = 'Done (${frames.length} frames, $w×$h).';
       });
+      if (mounted) _openGallery();
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _openGallery() {
+    final p = _pipeline;
+    if (p == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ResultsGalleryScreen(
+        headerSubtitle: widget.sessionId,
+        pipeline: p,
+      ),
+    ));
   }
 
   @override
@@ -184,6 +196,14 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
               icon: const Icon(Icons.auto_fix_high),
               label: Text(_busy ? 'Working…' : 'Compute reductions'),
             ),
+            if (_pipeline != null) ...[
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                onPressed: _openGallery,
+                icon: const Icon(Icons.collections),
+                label: const Text('Open results gallery'),
+              ),
+            ],
             if (_status != null) ...[
               const SizedBox(height: 8),
               Text(_status!, style: Theme.of(context).textTheme.bodyMedium),
@@ -194,11 +214,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 16),
-            Expanded(
-              child: _pipeline == null
-                  ? _FrameList(sessionId: widget.sessionId)
-                  : _PipelineGrid(pipeline: _pipeline!),
-            ),
+            Expanded(child: _FrameList(sessionId: widget.sessionId)),
           ],
         ),
       ),
@@ -239,43 +255,3 @@ class _FrameList extends ConsumerWidget {
   }
 }
 
-class _PipelineGrid extends StatelessWidget {
-  const _PipelineGrid({required this.pipeline});
-
-  final StackPipelineOutput pipeline;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = pipeline;
-    final r = p.reductions;
-    final items = <(String, Uint8List)>[
-      ('fusion + CLAHE', grayToPng(p.fusionClahe, p.width, p.height)),
-      ('fusion + Retinex', grayToPng(p.fusionRetinex, p.width, p.height)),
-      ('fusion', grayToPng(p.fusion, p.width, p.height)),
-      ('range', grayToPng(r.rangeImg, r.width, r.height)),
-      ('stddev', grayToPng(r.stddevImg, r.width, r.height)),
-      ('max', grayToPng(r.maxImg, r.width, r.height)),
-      ('min', grayToPng(r.minImg, r.width, r.height)),
-    ];
-    return GridView.count(
-      crossAxisCount: 2,
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      children: items
-          .map((e) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.memory(e.$2, fit: BoxFit.contain),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Center(child: Text(e.$1)),
-                ],
-              ))
-          .toList(),
-    );
-  }
-}

@@ -1,0 +1,36 @@
+name: inscription_raking_light
+description: "Mobile companion for raking-light documentation of inscriptions."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Filesystem + sharing for export pipeline
+  path_provider: ^2.1.4
+  share_plus: ^10.0.2
+
+  # Pure-Dart image processing (preview-resolution stack ops)
+  image: ^4.2.0
+
+  # Capture stack — wired in v0.2 once Info.plist / Manifest entries are set
+  # camera: ^0.11.0
+  # permission_handler: ^11.3.1
+  # sensors_plus: ^6.0.1
+  # exif: ^3.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

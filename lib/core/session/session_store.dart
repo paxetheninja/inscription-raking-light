@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../image_ops/registration.dart';
 import '../sidecar/sidecar_schema.dart';
 import 'session.dart';
 
@@ -123,6 +124,69 @@ class SessionStore {
     final file = await sidecarFile(session.id);
     final json = const JsonEncoder.withIndent('  ')
         .convert(session.toSidecar().toJson());
+    await file.writeAsString(json);
+  }
+
+  /// Persist a registration result into the sidecar: top-level registration
+  /// metadata + per-frame similarity transforms.
+  Future<void> updateRegistration(
+    String sessionId,
+    RegistrationResult result,
+  ) async {
+    final sc = await readSidecar(sessionId);
+    if (sc == null) {
+      throw StateError('No sidecar for session $sessionId');
+    }
+    final modeName = switch (result.mode) {
+      RegistrationMode.none => 'none',
+      RegistrationMode.fast => 'fast',
+      RegistrationMode.accurate => 'accurate',
+      RegistrationMode.orb => 'orb',
+    };
+    final framesOut = <SidecarFrame>[];
+    for (var i = 0; i < sc.frames.length; i++) {
+      final f = sc.frames[i];
+      final t = i < result.transforms.length ? result.transforms[i] : null;
+      framesOut.add(SidecarFrame(
+        file: f.file,
+        timestampMs: f.timestampMs,
+        lightAzimuthDeg: f.lightAzimuthDeg,
+        lightElevationDeg: f.lightElevationDeg,
+        iso: f.iso,
+        exposureUs: f.exposureUs,
+        focusDistanceM: f.focusDistanceM,
+        transform: t == null
+            ? null
+            : SidecarFrameTransform(
+                tx: t.tx,
+                ty: t.ty,
+                rotationRad: t.rotationRad,
+                scale: t.scale,
+              ),
+      ));
+    }
+    final updated = SidecarV1(
+      sessionId: sc.sessionId,
+      label: sc.label,
+      capturedAt: sc.capturedAt,
+      deviceModel: sc.deviceModel,
+      scaleMmPerPixel: sc.scaleMmPerPixel,
+      notes: sc.notes,
+      registration: SidecarRegistration(
+        mode: modeName,
+        validRect: [
+          result.validRect.x0,
+          result.validRect.y0,
+          result.validRect.x1,
+          result.validRect.y1,
+        ],
+        scores: result.scores,
+      ),
+      frames: framesOut,
+    );
+    final file = await sidecarFile(sessionId);
+    final json =
+        const JsonEncoder.withIndent('  ').convert(updated.toJson());
     await file.writeAsString(json);
   }
 

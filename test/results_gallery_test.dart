@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:inscription_raking_light/core/image_ops/registration.dart';
 import 'package:inscription_raking_light/core/image_ops/stack_reductions.dart';
 import 'package:inscription_raking_light/features/stack/results_gallery.dart';
 
@@ -22,6 +23,13 @@ void main() {
       fusion: small,
       fusionClahe: small,
       fusionRetinex: small,
+      registration: const RegistrationResult(
+        mode: RegistrationMode.none,
+        transforms: [FrameTransform.identity],
+        validRect: ValidRect(0, 0, 4, 4),
+        scores: [1.0],
+        warpedFrames: [],
+      ),
     );
 
     await tester.pumpWidget(MaterialApp(

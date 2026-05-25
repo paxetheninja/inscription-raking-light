@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/image_ops/photometric_stereo.dart';
 import '../../core/image_ops/preview_loader.dart';
+import '../../core/image_ops/registration.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
 import 'results_gallery.dart';
@@ -200,6 +201,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   String? _status;
   String? _error;
   StackPipelineOutput? _pipeline;
+  RegistrationMode _registrationMode = RegistrationMode.fast;
 
   Future<void> _compute() async {
     final store = ref.read(sessionStoreProvider);
@@ -252,14 +254,21 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         if (allSet) lights = maybe;
       }
 
+      final modeLabel = switch (_registrationMode) {
+        RegistrationMode.none => 'no alignment',
+        RegistrationMode.fast => 'fast alignment',
+        RegistrationMode.accurate => 'accurate alignment',
+        RegistrationMode.orb => 'ORB',
+      };
       setState(() => _status = lights != null
-          ? 'Computing reductions + fusion + CLAHE + Retinex + normal map…'
-          : 'Computing reductions + fusion + CLAHE + Retinex…');
+          ? 'Aligning ($modeLabel) + reductions + fusion + CLAHE + Retinex + normal map…'
+          : 'Aligning ($modeLabel) + reductions + fusion + CLAHE + Retinex…');
       final result = await runStackPipeline(StackInput(
         width: w,
         height: h,
         frames: previews.map((p) => p.bytes).toList(),
         lights: lights,
+        registrationMode: _registrationMode,
       ));
 
       setState(() {
@@ -267,8 +276,12 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         _status = 'Saving previews…';
       });
       await _persistPreviews(result);
+      await store.updateRegistration(widget.sessionId, result.registration);
+      final rect = result.registration.validRect;
+      final cropped = rect.width != w || rect.height != h;
       setState(() {
-        _status = 'Done (${frames.length} frames, $w×$h).';
+        _status = 'Done · ${frames.length} frames · ${result.width}×${result.height}'
+            '${cropped ? " (cropped from $w×$h)" : ""}.';
       });
       if (mounted) _openGallery();
     } catch (e) {
@@ -339,6 +352,13 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _RegistrationSelector(
+              value: _registrationMode,
+              onChanged: _busy
+                  ? null
+                  : (m) => setState(() => _registrationMode = m),
+            ),
+            const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: _busy ? null : _compute,
               icon: const Icon(Icons.auto_fix_high),
@@ -366,6 +386,56 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RegistrationSelector extends StatelessWidget {
+  const _RegistrationSelector({required this.value, required this.onChanged});
+
+  final RegistrationMode value;
+  final ValueChanged<RegistrationMode>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.compare_arrows, size: 18),
+        const SizedBox(width: 6),
+        Text('align:', style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(width: 8),
+        Expanded(
+          child: DropdownButton<RegistrationMode>(
+            value: value,
+            isExpanded: true,
+            isDense: true,
+            onChanged: onChanged == null
+                ? null
+                : (v) {
+                    if (v != null) onChanged!(v);
+                  },
+            items: const [
+              DropdownMenuItem(
+                value: RegistrationMode.none,
+                child: Text('None — assume aligned'),
+              ),
+              DropdownMenuItem(
+                value: RegistrationMode.fast,
+                child: Text('Fast — NCC translation (2-DoF)'),
+              ),
+              DropdownMenuItem(
+                value: RegistrationMode.accurate,
+                child: Text('Accurate — NCC + rot/scale (4-DoF)'),
+              ),
+              DropdownMenuItem(
+                value: RegistrationMode.orb,
+                enabled: false,
+                child: Text('ORB — v0.9, OpenCV (coming soon)'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

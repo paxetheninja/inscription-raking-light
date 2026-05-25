@@ -1,7 +1,7 @@
 name: inscription_raking_light
 description: "Mobile companion for raking-light documentation of inscriptions."
 publish_to: 'none'
-version: 0.7.0+7
+version: 0.8.0+8
 
 environment:
   sdk: ^3.10.7

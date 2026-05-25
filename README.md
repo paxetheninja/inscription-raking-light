@@ -128,9 +128,14 @@ Pinned to Flutter `3.38.8` to match the development environment.
   the pipeline solves a 3×3 system per pixel and emits an RGB normal map
   encoded with the standard `(n + 1) / 2` convention. Throws with a
   human-readable explanation when light directions are coplanar.
-- **v0.8** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
-  raw on iOS via custom platform channels — significant native work, kept
-  as its own version).
+- **v0.8** ✅ — image registration menu. Three pure-Dart modes (None, Fast
+  NCC translation, Accurate NCC + rotation/scale grid search), pre-stack
+  alignment in the same isolate, valid-region crop, per-frame transforms
+  written into the sidecar.
+- **v0.9** — OpenCV-backed registration (ORB + RANSAC for large
+  displacements, ECC for sub-pixel accuracy) via `opencv_dart`.
+- **v0.10** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
+  raw on iOS via custom platform channels — significant native work).
 
 ## Status
 

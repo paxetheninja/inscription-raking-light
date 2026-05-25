@@ -12,6 +12,7 @@ class SidecarV1 {
     required this.frames,
     this.scaleMmPerPixel,
     this.notes,
+    this.registration,
   });
 
   /// Stable session id (ulid).
@@ -33,6 +34,11 @@ class SidecarV1 {
 
   final String? notes;
 
+  /// Per-session registration metadata: which algorithm ran, the cropped
+  /// valid region in reference-frame coordinates, and per-frame NCC quality
+  /// scores. Null until the Stack screen has run at least once.
+  final SidecarRegistration? registration;
+
   Map<String, dynamic> toJson() => {
         'schema': 'inscription-raking-light/sidecar@1',
         'session_id': sessionId,
@@ -41,6 +47,7 @@ class SidecarV1 {
         'device_model': deviceModel,
         if (scaleMmPerPixel != null) 'scale_mm_per_pixel': scaleMmPerPixel,
         if (notes != null) 'notes': notes,
+        if (registration != null) 'registration': registration!.toJson(),
         'frames': frames.map((f) => f.toJson()).toList(),
       };
 
@@ -51,8 +58,46 @@ class SidecarV1 {
         deviceModel: j['device_model'] as String? ?? '',
         scaleMmPerPixel: (j['scale_mm_per_pixel'] as num?)?.toDouble(),
         notes: j['notes'] as String?,
+        registration: j['registration'] == null
+            ? null
+            : SidecarRegistration.fromJson(
+                j['registration'] as Map<String, dynamic>),
         frames: ((j['frames'] as List?) ?? const [])
             .map((e) => SidecarFrame.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+class SidecarRegistration {
+  const SidecarRegistration({
+    required this.mode,
+    required this.validRect,
+    required this.scores,
+  });
+
+  /// Mode name (`none` / `fast` / `accurate` / `orb`).
+  final String mode;
+
+  /// Common valid rectangle after warping every frame onto the reference.
+  /// `[x0, y0, x1, y1]` in reference-frame pixel coords.
+  final List<int> validRect;
+
+  /// Per-frame final NCC score against the reference; frame 0 is always 1.0.
+  final List<double> scores;
+
+  Map<String, dynamic> toJson() => {
+        'mode': mode,
+        'valid_rect': validRect,
+        'scores': scores,
+      };
+
+  static SidecarRegistration fromJson(Map<String, dynamic> j) =>
+      SidecarRegistration(
+        mode: j['mode'] as String,
+        validRect:
+            ((j['valid_rect'] as List?) ?? const []).map((v) => v as int).toList(),
+        scores: ((j['scores'] as List?) ?? const [])
+            .map((v) => (v as num).toDouble())
             .toList(),
       );
 }
@@ -66,6 +111,7 @@ class SidecarFrame {
     this.iso,
     this.exposureUs,
     this.focusDistanceM,
+    this.transform,
   });
 
   /// Path relative to the session folder, e.g. `raw/0001.jpg`.
@@ -81,6 +127,10 @@ class SidecarFrame {
   final int? exposureUs;
   final double? focusDistanceM;
 
+  /// Similarity transform that maps this frame onto the reference frame.
+  /// Null when registration hasn't run yet or when this is the reference.
+  final SidecarFrameTransform? transform;
+
   Map<String, dynamic> toJson() => {
         'file': file,
         'timestamp_ms': timestampMs,
@@ -89,6 +139,7 @@ class SidecarFrame {
         if (iso != null) 'iso': iso,
         if (exposureUs != null) 'exposure_us': exposureUs,
         if (focusDistanceM != null) 'focus_distance_m': focusDistanceM,
+        if (transform != null) 'transform': transform!.toJson(),
       };
 
   static SidecarFrame fromJson(Map<String, dynamic> j) => SidecarFrame(
@@ -99,5 +150,38 @@ class SidecarFrame {
         iso: (j['iso'] as num?)?.toInt(),
         exposureUs: (j['exposure_us'] as num?)?.toInt(),
         focusDistanceM: (j['focus_distance_m'] as num?)?.toDouble(),
+        transform: j['transform'] == null
+            ? null
+            : SidecarFrameTransform.fromJson(
+                j['transform'] as Map<String, dynamic>),
+      );
+}
+
+class SidecarFrameTransform {
+  const SidecarFrameTransform({
+    required this.tx,
+    required this.ty,
+    required this.rotationRad,
+    required this.scale,
+  });
+
+  final double tx;
+  final double ty;
+  final double rotationRad;
+  final double scale;
+
+  Map<String, dynamic> toJson() => {
+        'tx': tx,
+        'ty': ty,
+        'rotation_rad': rotationRad,
+        'scale': scale,
+      };
+
+  static SidecarFrameTransform fromJson(Map<String, dynamic> j) =>
+      SidecarFrameTransform(
+        tx: (j['tx'] as num).toDouble(),
+        ty: (j['ty'] as num).toDouble(),
+        rotationRad: (j['rotation_rad'] as num).toDouble(),
+        scale: (j['scale'] as num).toDouble(),
       );
 }

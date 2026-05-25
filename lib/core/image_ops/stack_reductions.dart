@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'clahe.dart';
 import 'fusion.dart';
 import 'photometric_stereo.dart';
+import 'registration.dart';
 import 'retinex.dart';
 
 /// Per-pixel reductions across a stack of grayscale frames, all sharing the
@@ -35,6 +36,7 @@ class StackInput {
     required this.height,
     required this.frames,
     this.lights,
+    this.registrationMode = RegistrationMode.fast,
   });
 
   final int width;
@@ -46,6 +48,10 @@ class StackInput {
   /// Optional per-frame light direction vectors (in image coords). When
   /// provided, the pipeline also computes a photometric-stereo normal map.
   final List<LightVec>? lights;
+
+  /// Which registration algorithm to run before stacking. Defaults to
+  /// [RegistrationMode.fast] (pyramid NCC translation).
+  final RegistrationMode registrationMode;
 }
 
 /// Compute max / min / range / stddev across the stack on a background isolate.
@@ -115,6 +121,7 @@ class StackPipelineOutput {
     required this.fusion,
     required this.fusionClahe,
     required this.fusionRetinex,
+    required this.registration,
     this.normalMap,
     this.normalMapNote,
   });
@@ -123,6 +130,9 @@ class StackPipelineOutput {
   final Uint8List fusion;
   final Uint8List fusionClahe;
   final Uint8List fusionRetinex;
+
+  /// Per-frame transforms + valid-region crop + alignment scores.
+  final RegistrationResult registration;
 
   /// RGB normal map (length = width * height * 3) when photometric stereo
   /// could be computed. Null otherwise; see [normalMapNote] for why.
@@ -140,10 +150,32 @@ Future<StackPipelineOutput> runStackPipeline(StackInput input) {
 }
 
 StackPipelineOutput runStackPipelineSync(StackInput input) {
-  final reductions = computeStackReductionsSync(input);
-  final fusion = exposureFusion(input.frames, input.width, input.height);
-  final fusionClahe = clahe(fusion, input.width, input.height);
-  final fusionRetinex = multiScaleRetinex(fusion, input.width, input.height);
+  // 1. Align all frames onto the reference (frame 0). The result is the
+  //    warped + cropped frames plus per-frame transforms + a common valid
+  //    rect in reference-frame coordinates.
+  final registration = registerStack(RegistrationInput(
+    width: input.width,
+    height: input.height,
+    frames: input.frames,
+    mode: input.registrationMode,
+  ));
+  final alignedFrames = registration.warpedFrames;
+  final w = registration.validRect.width;
+  final h = registration.validRect.height;
+
+  // 2. Run the existing reductions + enhancement pipeline on the aligned
+  //    (and cropped) frames.
+  final reductionInput = StackInput(
+    width: w,
+    height: h,
+    frames: alignedFrames,
+    lights: input.lights,
+    registrationMode: RegistrationMode.none, // already done above
+  );
+  final reductions = computeStackReductionsSync(reductionInput);
+  final fusion = exposureFusion(alignedFrames, w, h);
+  final fusionClahe = clahe(fusion, w, h);
+  final fusionRetinex = multiScaleRetinex(fusion, w, h);
 
   Uint8List? normalMap;
   String? normalMapNote;
@@ -151,19 +183,19 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
   if (lights == null) {
     normalMapNote = 'Tag each frame with a light direction on the Capture tab '
         'to enable photometric-stereo normal-map estimation.';
-  } else if (lights.length != input.frames.length) {
+  } else if (lights.length != alignedFrames.length) {
     normalMapNote = 'Light directions are only set on '
-        '${lights.length}/${input.frames.length} frames — set them on all '
+        '${lights.length}/${alignedFrames.length} frames — set them on all '
         'frames to compute the normal map.';
-  } else if (input.frames.length < 3) {
+  } else if (alignedFrames.length < 3) {
     normalMapNote = 'Need ≥ 3 frames with light directions to compute a '
-        'normal map (got ${input.frames.length}).';
+        'normal map (got ${alignedFrames.length}).';
   } else {
     try {
       normalMap = photometricStereoNormalMap(PhotometricStereoInput(
-        width: input.width,
-        height: input.height,
-        frames: input.frames,
+        width: w,
+        height: h,
+        frames: alignedFrames,
         lights: lights,
       ));
     } catch (e) {
@@ -176,6 +208,7 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
     fusion: fusion,
     fusionClahe: fusionClahe,
     fusionRetinex: fusionRetinex,
+    registration: registration,
     normalMap: normalMap,
     normalMapNote: normalMapNote,
   );

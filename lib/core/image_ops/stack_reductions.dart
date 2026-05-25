@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'clahe.dart';
+import 'dog.dart';
 import 'fusion.dart';
+import 'pca.dart';
 import 'photometric_stereo.dart';
 import 'registration.dart';
 import 'retinex.dart';
@@ -129,15 +131,31 @@ class StackPipelineOutput {
     required this.fusion,
     required this.fusionClahe,
     required this.fusionRetinex,
+    required this.combinedRelief,
+    required this.multiscaleDog,
+    required this.pcaComponents,
     required this.registration,
     this.normalMap,
     this.normalMapNote,
+    this.blackHat,
   });
 
   final StackReductions reductions;
   final Uint8List fusion;
   final Uint8List fusionClahe;
   final Uint8List fusionRetinex;
+
+  /// `clahe(stddev + (max − min) / 2)` — desktop pipeline's headline output
+  /// for raking-light stacks when light directions are not known.
+  final Uint8List combinedRelief;
+
+  /// Multi-scale Difference of Gaussians applied to the fusion image. Each
+  /// pixel is the max |G(σ₁) − G(σ₂)| across four scale pairs.
+  final Uint8List multiscaleDog;
+
+  /// Top-k principal components of the aligned stack, descending eigenvalue.
+  /// `pcaComponents[1]` is typically the primary relief channel.
+  final List<Uint8List> pcaComponents;
 
   /// Per-frame transforms + valid-region crop + alignment scores.
   final RegistrationResult registration;
@@ -149,8 +167,27 @@ class StackPipelineOutput {
   /// Reason the normal map is absent — e.g. "Light directions are coplanar."
   final String? normalMapNote;
 
+  /// Black-hat morphology applied to the fusion image. Computed on the
+  /// main isolate (opencv_dart) and attached after the worker isolate
+  /// completes — see [StackPipelineOutput.withBlackHat].
+  final Uint8List? blackHat;
+
   int get width => reductions.width;
   int get height => reductions.height;
+
+  StackPipelineOutput withBlackHat(Uint8List bytes) => StackPipelineOutput(
+        reductions: reductions,
+        fusion: fusion,
+        fusionClahe: fusionClahe,
+        fusionRetinex: fusionRetinex,
+        combinedRelief: combinedRelief,
+        multiscaleDog: multiscaleDog,
+        pcaComponents: pcaComponents,
+        registration: registration,
+        normalMap: normalMap,
+        normalMapNote: normalMapNote,
+        blackHat: bytes,
+      );
 }
 
 Future<StackPipelineOutput> runStackPipeline(StackInput input) {
@@ -185,7 +222,12 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
   final reductions = computeStackReductionsSync(reductionInput);
   final fusion = exposureFusion(alignedFrames, w, h);
   final fusionClahe = clahe(fusion, w, h);
-  final fusionRetinex = multiScaleRetinex(fusion, w, h);
+  // Chain CLAHE after Retinex (matches the desktop pipeline).
+  final fusionRetinex =
+      clahe(multiScaleRetinex(fusion, w, h), w, h);
+  final combinedRelief = _computeCombinedRelief(reductions);
+  final multiscaleDogOut = multiScaleDog(fusion, w, h);
+  final pca = computePcaLayers(alignedFrames, w, h);
 
   Uint8List? normalMap;
   String? normalMapNote;
@@ -218,8 +260,32 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
     fusion: fusion,
     fusionClahe: fusionClahe,
     fusionRetinex: fusionRetinex,
+    combinedRelief: combinedRelief,
+    multiscaleDog: multiscaleDogOut,
+    pcaComponents: pca.components,
     registration: registration,
     normalMap: normalMap,
     normalMapNote: normalMapNote,
   );
+}
+
+/// stddev + range/2, normalised then CLAHE'd. This is the desktop's
+/// "primary relief proxy" output when light directions are unknown
+/// (lib_enhance.py:378).
+Uint8List _computeCombinedRelief(StackReductions r) {
+  final n = r.maxImg.length;
+  final raw = Float64List(n);
+  var hi = 0.0;
+  for (var i = 0; i < n; i++) {
+    final v = r.stddevImg[i] + (r.maxImg[i] - r.minImg[i]) / 2.0;
+    raw[i] = v;
+    if (v > hi) hi = v;
+  }
+  final out = Uint8List(n);
+  if (hi < 1e-9) return out;
+  final inv = 255.0 / hi;
+  for (var i = 0; i < n; i++) {
+    out[i] = (raw[i] * inv).round().clamp(0, 255);
+  }
+  return clahe(out, r.width, r.height);
 }

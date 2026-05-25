@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/image_ops/morphology_cv.dart';
 import '../../core/image_ops/photometric_stereo.dart';
 import '../../core/image_ops/preview_loader.dart';
 import '../../core/image_ops/registration.dart';
@@ -289,11 +290,23 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         precomputedScores: preScores,
       ));
 
+      // Black hat morphology runs on the main isolate (opencv_dart FFI
+      // handles can't cross isolate boundaries) using the fusion image.
+      setState(() => _status = 'Computing black hat morphology…');
+      var pipelineWithExtras = result;
+      try {
+        final bh = computeBlackHat(result.fusion, result.width, result.height);
+        pipelineWithExtras = result.withBlackHat(bh);
+      } catch (e) {
+        // Black hat is a bonus; fail soft.
+        debugPrint('Black hat failed: $e');
+      }
+
       setState(() {
-        _pipeline = result;
+        _pipeline = pipelineWithExtras;
         _status = 'Saving previews…';
       });
-      await _persistPreviews(result);
+      await _persistPreviews(pipelineWithExtras);
       await store.updateRegistration(widget.sessionId, result.registration);
       final rect = result.registration.validRect;
       final cropped = rect.width != w || rect.height != h;
@@ -323,15 +336,25 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   Future<void> _persistPreviews(StackPipelineOutput pipe) async {
     final store = ref.read(sessionStoreProvider);
     final r = pipe.reductions;
+    final w = pipe.width;
+    final h = pipe.height;
     final entries = <(String, List<int>)>[
-      ('fusion-clahe.png', grayToPng(pipe.fusionClahe, pipe.width, pipe.height)),
-      ('fusion-retinex.png', grayToPng(pipe.fusionRetinex, pipe.width, pipe.height)),
-      ('fusion.png', grayToPng(pipe.fusion, pipe.width, pipe.height)),
+      ('fusion-clahe.png', grayToPng(pipe.fusionClahe, w, h)),
+      ('fusion-retinex.png', grayToPng(pipe.fusionRetinex, w, h)),
+      ('fusion.png', grayToPng(pipe.fusion, w, h)),
+      ('combined-relief.png', grayToPng(pipe.combinedRelief, w, h)),
+      ('multiscale-dog.png', grayToPng(pipe.multiscaleDog, w, h)),
       ('range.png', grayToPng(r.rangeImg, r.width, r.height)),
       ('stddev.png', grayToPng(r.stddevImg, r.width, r.height)),
       ('max.png', grayToPng(r.maxImg, r.width, r.height)),
       ('min.png', grayToPng(r.minImg, r.width, r.height)),
     ];
+    for (var i = 0; i < pipe.pcaComponents.length; i++) {
+      entries.add((
+        'pca-pc${i + 1}.png',
+        grayToPng(pipe.pcaComponents[i], w, h),
+      ));
+    }
     for (final (name, bytes) in entries) {
       await store.writePreview(widget.sessionId, name, bytes);
     }
@@ -339,7 +362,14 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       await store.writePreview(
         widget.sessionId,
         'normal-map.png',
-        rgbToPng(pipe.normalMap!, pipe.width, pipe.height),
+        rgbToPng(pipe.normalMap!, w, h),
+      );
+    }
+    if (pipe.blackHat != null) {
+      await store.writePreview(
+        widget.sessionId,
+        'black-hat.png',
+        grayToPng(pipe.blackHat!, w, h),
       );
     }
   }

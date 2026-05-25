@@ -23,6 +23,9 @@ void main() {
       fusion: small,
       fusionClahe: small,
       fusionRetinex: small,
+      combinedRelief: small,
+      multiscaleDog: small,
+      pcaComponents: [small, small, small, small],
       registration: const RegistrationResult(
         mode: RegistrationMode.none,
         transforms: [FrameTransform.identity],
@@ -40,10 +43,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // First page is fusion + CLAHE.
-    expect(find.text('fusion + CLAHE'), findsOneWidget);
-    // Header includes the position counter.
-    expect(find.textContaining('1 / 7'), findsOneWidget);
+    // With PCA components, the headline first page is PC2 (the primary
+    // relief channel per desktop docstrings).
+    expect(find.text('PC2 — relief'), findsOneWidget);
+    // Header includes a position counter — total depends on which optional
+    // outputs are present; just check it starts at 1.
+    expect(find.textContaining('1 /'), findsOneWidget);
     // Subtitle is wired through.
     expect(find.textContaining('s_test'), findsOneWidget);
   });

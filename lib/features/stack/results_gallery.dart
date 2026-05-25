@@ -56,30 +56,65 @@ class _ResultsGalleryScreenState extends State<ResultsGalleryScreen> {
     final r = p.reductions;
     final w = p.width;
     final h = p.height;
-    return [
+    final pages = <_GalleryPage>[
+      // Headline outputs first — these are the ones most likely to be the
+      // single best inscription image.
+      if (p.pcaComponents.length >= 2)
+        _GalleryPage(
+          label: 'PC2 — relief',
+          description:
+              'Second principal component of the aligned stack. Usually '
+              'the primary surface-relief mode — illumination drops into '
+              'PC1, and PC2 captures the carved-vs-flat distinction.',
+          png: grayToPng(p.pcaComponents[1], w, h),
+        ),
+      if (p.blackHat != null)
+        _GalleryPage(
+          label: 'black hat',
+          description:
+              'Morphological black hat on the fusion image (15×15 ellipse). '
+              'Explicitly extracts dark depressions — for raking-lit stone, '
+              'that means the carved grooves themselves.',
+          png: grayToPng(p.blackHat!, w, h),
+        ),
+      _GalleryPage(
+        label: 'combined relief',
+        description:
+            'stddev + (max − min) / 2, CLAHE-equalised. Desktop pipeline\'s '
+            'headline output when light directions are unknown.',
+        png: grayToPng(p.combinedRelief, w, h),
+      ),
+      _GalleryPage(
+        label: 'fusion + CLAHE',
+        description:
+            'Mertens-style exposure fusion → contrast-limited adaptive '
+            'histogram equalisation.',
+        png: grayToPng(p.fusionClahe, w, h),
+      ),
+      _GalleryPage(
+        label: 'multi-scale DoG',
+        description:
+            'Max |G(σ₁) − G(σ₂)| across four scale pairs '
+            '{(1,2), (2,4), (3,6), (4,8)}. Band-pass detector that picks '
+            'up grooves of any width.',
+        png: grayToPng(p.multiscaleDog, w, h),
+      ),
+      _GalleryPage(
+        label: 'fusion + Retinex',
+        description:
+            'Mertens fusion → multi-scale Retinex (σ ∈ {3, 12, 40}) → CLAHE. '
+            'Lifts shadow detail; can over-flatten in flat regions.',
+        png: grayToPng(p.fusionRetinex, w, h),
+      ),
       if (p.normalMap != null)
         _GalleryPage(
           label: 'normal map',
           description:
               'Lambertian photometric stereo using the per-frame light '
-              'directions from Capture. RGB = (n + 1) / 2 — a flat, '
-              'forward-facing surface is around (128, 128, 255).',
+              'directions from Capture. RGB = (n + 1) / 2 — a flat surface '
+              'is ≈ (128, 128, 255).',
           png: rgbToPng(p.normalMap!, w, h),
         ),
-      _GalleryPage(
-        label: 'fusion + CLAHE',
-        description:
-            'Mertens-style exposure fusion → contrast-limited adaptive '
-            'histogram equalisation. Usually the most legible single image.',
-        png: grayToPng(p.fusionClahe, w, h),
-      ),
-      _GalleryPage(
-        label: 'fusion + Retinex',
-        description:
-            'Mertens fusion → multi-scale Retinex (σ ∈ {3, 12, 40}). '
-            'Lifts shadow detail; can over-flatten in flat regions.',
-        png: grayToPng(p.fusionRetinex, w, h),
-      ),
       _GalleryPage(
         label: 'fusion',
         description:
@@ -87,35 +122,56 @@ class _ResultsGalleryScreenState extends State<ResultsGalleryScreen> {
             '|Laplacian| · well-exposedness, normalised across the stack.',
         png: grayToPng(p.fusion, w, h),
       ),
+    ];
+
+    // Additional PCA components (PC1, PC3, PC4) after the headline page set.
+    if (p.pcaComponents.isNotEmpty) {
+      pages.add(_GalleryPage(
+        label: 'PC1 — illumination',
+        description:
+            'First principal component. Usually tracks overall brightness '
+            'changes across the stack — useful as a "no relief" baseline.',
+        png: grayToPng(p.pcaComponents[0], w, h),
+      ));
+    }
+    for (var i = 2; i < p.pcaComponents.length; i++) {
+      pages.add(_GalleryPage(
+        label: 'PC${i + 1}',
+        description:
+            'Principal component ${i + 1}. Diminishing-return modes — '
+            'fine surface texture or noise-dominated.',
+        png: grayToPng(p.pcaComponents[i], w, h),
+      ));
+    }
+
+    pages.addAll([
       _GalleryPage(
         label: 'range',
         description:
-            'Per-pixel (max − min) across the stack. Strong response on '
-            'edges that catch the raking light from different angles.',
+            'Per-pixel (max − min) across the stack.',
         png: grayToPng(r.rangeImg, r.width, r.height),
       ),
       _GalleryPage(
         label: 'stddev',
         description:
-            'Per-pixel standard deviation across the stack. Highlights '
-            'surface texture independent of overall brightness.',
+            'Per-pixel standard deviation across the stack.',
         png: grayToPng(r.stddevImg, r.width, r.height),
       ),
       _GalleryPage(
         label: 'max',
         description:
-            'Per-pixel max across the stack — the brightest the surface '
-            'ever got in any frame.',
+            'Per-pixel max across the stack.',
         png: grayToPng(r.maxImg, r.width, r.height),
       ),
       _GalleryPage(
         label: 'min',
         description:
-            'Per-pixel min across the stack — the darkest the surface '
-            'ever got. Useful for spotting persistent shadows in incisions.',
+            'Per-pixel min across the stack.',
         png: grayToPng(r.minImg, r.width, r.height),
       ),
-    ];
+    ]);
+
+    return pages;
   }
 
   @override

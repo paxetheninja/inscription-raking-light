@@ -139,8 +139,13 @@ Pinned to Flutter `3.38.8` to match the development environment.
   that the pure-Dart Fast/Accurate modes can't bootstrap. Computed on
   the main isolate (FFI handles aren't safe across isolate boundaries),
   transforms then sent into the worker isolate for warp + crop + stack.
-- **v0.10** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
-  raw on iOS via custom platform channels — significant native work).
+- **v0.10** ✅ — Inscription-specialised gallery outputs: PCA layers
+  (PC1–PC4, where PC2 is the primary relief channel), combined relief
+  (`stddev + range/2`), multi-scale Difference of Gaussians, and
+  black-hat morphology on the fusion image. Retinex now CLAHE-chained
+  to match the desktop pipeline.
+- **v0.11** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
+  raw on iOS via custom platform channels).
 
 ## Status
 

@@ -1,15 +1,16 @@
-name: iOS Release (signed)
+name: iOS Release (TestFlight)
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
-# Tag-only signed iOS build. Reads signing material from GitHub Secrets;
-# see docs/IOS_SIGNING.md for the one-time Apple-side + Secrets setup.
+# Tag-only signed iOS build that uploads to TestFlight. Reads signing
+# material from GitHub Secrets; see docs/IOS_SIGNING.md for the one-time
+# Apple-side + Secrets setup.
 
 jobs:
-  build-signed:
+  build-and-upload:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -21,6 +22,9 @@ jobs:
           IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
           missing=()
@@ -28,6 +32,9 @@ jobs:
           [ -z "${IOS_DIST_CERT_PASSWORD:-}" ] && missing+=("IOS_DIST_CERT_PASSWORD")
           [ -z "${IOS_PROVISIONING_PROFILE:-}" ] && missing+=("IOS_PROVISIONING_PROFILE")
           [ -z "${IOS_TEAM_ID:-}" ] && missing+=("IOS_TEAM_ID")
+          [ -z "${APP_STORE_CONNECT_API_KEY_ID:-}" ] && missing+=("APP_STORE_CONNECT_API_KEY_ID")
+          [ -z "${APP_STORE_CONNECT_API_ISSUER_ID:-}" ] && missing+=("APP_STORE_CONNECT_API_ISSUER_ID")
+          [ -z "${APP_STORE_CONNECT_API_KEY_BASE64:-}" ] && missing+=("APP_STORE_CONNECT_API_KEY_BASE64")
           if [ ${#missing[@]} -ne 0 ]; then
             echo "Missing required secrets: ${missing[*]}" >&2
             echo "See docs/IOS_SIGNING.md for setup instructions." >&2
@@ -112,7 +119,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>ad-hoc</string>
+            <string>app-store</string>
             <key>teamID</key>
             <string>$IOS_TEAM_ID</string>
             <key>signingStyle</key>
@@ -124,6 +131,8 @@ jobs:
             </dict>
             <key>stripSwiftSymbols</key>
             <true/>
+            <key>uploadSymbols</key>
+            <true/>
             <key>compileBitcode</key>
             <false/>
           </dict>
@@ -131,20 +140,56 @@ jobs:
           EOF
           cat ios/ExportOptions.plist
 
-      - name: Build signed IPA
+      - name: Build signed IPA (App Store distribution)
         run: |
           flutter build ipa --release \
             --export-options-plist=ios/ExportOptions.plist
 
-      - name: Upload signed IPA
+      - name: Stage App Store Connect API key
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          echo "$KEY_B64" | base64 --decode > "$KEY_DIR/AuthKey_${KEY_ID}.p8"
+          chmod 600 "$KEY_DIR/AuthKey_${KEY_ID}.p8"
+          echo "API_KEY_PATH=$KEY_DIR/AuthKey_${KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - name: Upload to TestFlight via altool
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          if [ -z "$IPA" ]; then
+            echo "No IPA found in build/ios/ipa/" >&2
+            exit 1
+          fi
+          echo "Uploading $IPA to App Store Connect…"
+          xcrun altool --upload-app \
+            --type ios \
+            -f "$IPA" \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+          echo "Upload complete. The build will appear in TestFlight after"
+          echo "Apple processes it (typically 5–15 minutes). Internal testers"
+          echo "get it immediately; external testers may need a one-time beta"
+          echo "review on the first build."
+
+      - name: Upload signed IPA as workflow artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: inscription-raking-light-${{ github.ref_name }}-ipa
+          name: stela-${{ github.ref_name }}-ipa
           path: build/ios/ipa/*.ipa
-          if-no-files-found: error
+          if-no-files-found: warn
 
-      - name: Clean up keychain and profiles
+      - name: Clean up keychain, profiles, and API key
         if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID:-unknown}.mobileprovision" || true
+          rm -f "${API_KEY_PATH:-/tmp/nonexistent}" || true

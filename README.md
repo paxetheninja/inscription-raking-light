@@ -97,8 +97,10 @@ CI on every push / PR to `main`:
 
 On `v*` tag pushes:
 
-- **iOS Release (signed)** — `macos-latest`, builds a **signed ad-hoc IPA**
-  using credentials stored in GitHub Secrets. See
+- **iOS Release (TestFlight)** — `macos-latest`, builds a **signed App Store
+  IPA** and uploads it to TestFlight via `xcrun altool` + an App Store
+  Connect API key. Internal testers receive the build instantly; external
+  testers after a one-time Apple beta review. See
   [`docs/IOS_SIGNING.md`](docs/IOS_SIGNING.md) for the one-time setup.
 
 Pinned to Flutter `3.38.8` to match the development environment.

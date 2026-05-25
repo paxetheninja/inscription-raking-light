@@ -29,6 +29,10 @@ dependencies:
   # Session export — zip the session folder for share-sheet handoff (v0.6)
   archive: ^4.0.0
 
+  # Feature-based registration for v0.9 (ORB + RANSAC similarity transform).
+  # Native binaries fetched via Dart Native Assets (requires Dart 3.10+).
+  opencv_dart: ^2.2.1+4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

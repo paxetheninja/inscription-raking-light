@@ -117,8 +117,11 @@ Pinned to Flutter `3.38.8` to match the development environment.
   frame, enter the real-world distance in mm, the app writes
   `scale_mm_per_pixel` to the sidecar. Measure mode reads it back to show
   on-image distances in mm.
-- **v0.6** — export bundle (zip with raw frames + previews + sidecar) +
-  share sheet.
+- **v0.6** ✅ — Stack tab persists the seven enhancement PNGs to
+  `<session>/preview/` after computing. Export tab lists every session
+  with frame count + on-disk size; "Share zip" bundles `raw/` + `preview/`
+  + `sidecar.json` into a temp `.zip` and opens the system share sheet.
+  Stack tab session tiles gain a 3-dot menu for **Rename** + **Delete**.
 - **v0.7** — DNG capture where supported; rough photometric-stereo normal map.
 
 ## Status

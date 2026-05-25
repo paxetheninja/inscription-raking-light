@@ -1,7 +1,7 @@
 name: inscription_raking_light
 description: "Mobile companion for raking-light documentation of inscriptions."
 publish_to: 'none'
-version: 0.5.0+5
+version: 0.6.0+6
 
 environment:
   sdk: ^3.10.7
@@ -25,6 +25,9 @@ dependencies:
 
   # Pure-Dart image processing for preview reductions (v0.3)
   image: ^4.2.0
+
+  # Session export — zip the session folder for share-sheet handoff (v0.6)
+  archive: ^4.0.0
 
 dev_dependencies:
   flutter_test:

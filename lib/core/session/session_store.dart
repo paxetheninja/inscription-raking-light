@@ -38,6 +38,63 @@ class SessionStore {
     return File(p.join(dir.path, 'raw', filename));
   }
 
+  Future<Directory> previewDir(String sessionId) async {
+    final dir = await sessionDir(sessionId);
+    final preview = Directory(p.join(dir.path, 'preview'));
+    if (!await preview.exists()) await preview.create(recursive: true);
+    return preview;
+  }
+
+  Future<File> writePreview(
+    String sessionId,
+    String name,
+    List<int> bytes,
+  ) async {
+    final dir = await previewDir(sessionId);
+    final file = File(p.join(dir.path, name));
+    await file.writeAsBytes(bytes);
+    return file;
+  }
+
+  Future<void> deleteSession(String sessionId) async {
+    final dir = await sessionDir(sessionId);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+  }
+
+  Future<void> renameLabel(String sessionId, String newLabel) async {
+    final sc = await readSidecar(sessionId);
+    if (sc == null) throw StateError('No sidecar for session $sessionId');
+    final updated = SidecarV1(
+      sessionId: sc.sessionId,
+      label: newLabel,
+      capturedAt: sc.capturedAt,
+      deviceModel: sc.deviceModel,
+      scaleMmPerPixel: sc.scaleMmPerPixel,
+      notes: sc.notes,
+      frames: sc.frames,
+    );
+    final f = await sidecarFile(sessionId);
+    final json =
+        const JsonEncoder.withIndent('  ').convert(updated.toJson());
+    await f.writeAsString(json);
+  }
+
+  Future<int> sessionByteSize(String sessionId) async {
+    final dir = await sessionDir(sessionId);
+    if (!await dir.exists()) return 0;
+    var total = 0;
+    await for (final e in dir.list(recursive: true, followLinks: false)) {
+      if (e is File) {
+        try {
+          total += await e.length();
+        } catch (_) {/* race with deletion */}
+      }
+    }
+    return total;
+  }
+
   Future<File> sidecarFile(String sessionId) async {
     final dir = await sessionDir(sessionId);
     return File(p.join(dir.path, 'sidecar.json'));

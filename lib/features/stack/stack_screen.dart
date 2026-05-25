@@ -93,10 +93,35 @@ class _SessionTile extends ConsumerWidget {
           leading: const Icon(Icons.collections_outlined),
           title: Text(title),
           subtitle: Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: const Icon(Icons.chevron_right),
+          trailing: PopupMenuButton<String>(
+            tooltip: 'Session actions',
+            onSelected: (v) async {
+              switch (v) {
+                case 'rename':
+                  final newLabel = await _promptRename(context, title);
+                  if (newLabel != null && newLabel.isNotEmpty) {
+                    await store.renameLabel(sessionId, newLabel);
+                    ref.invalidate(sessionListProvider);
+                  }
+                case 'delete':
+                  final ok = await _confirmDelete(context, title);
+                  if (ok == true) {
+                    await store.deleteSession(sessionId);
+                    ref.invalidate(sessionListProvider);
+                  }
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'rename', child: Text('Rename label')),
+              PopupMenuItem(value: 'delete', child: Text('Delete session')),
+            ],
+          ),
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => SessionDetailScreen(sessionId: sessionId),
+              builder: (_) => SessionDetailScreen(
+                sessionId: sessionId,
+                label: title,
+              ),
             ));
           },
         );
@@ -105,10 +130,64 @@ class _SessionTile extends ConsumerWidget {
   }
 }
 
+Future<String?> _promptRename(BuildContext context, String current) {
+  final ctrl = TextEditingController(text: current);
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Rename session'),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Label'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(null),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<bool?> _confirmDelete(BuildContext context, String title) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Delete session?'),
+      content: Text(
+          'This permanently deletes "$title" and all of its frames + previews. '
+          'There is no undo.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.tonal(
+          style: FilledButton.styleFrom(
+              foregroundColor: const Color(0xFFB00020)),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+}
+
 class SessionDetailScreen extends ConsumerStatefulWidget {
-  const SessionDetailScreen({super.key, required this.sessionId});
+  const SessionDetailScreen({
+    super.key,
+    required this.sessionId,
+    this.label,
+  });
 
   final String sessionId;
+  final String? label;
 
   @override
   ConsumerState<SessionDetailScreen> createState() =>
@@ -161,6 +240,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
 
       setState(() {
         _pipeline = result;
+        _status = 'Saving previews…';
+      });
+      await _persistPreviews(result);
+      setState(() {
         _status = 'Done (${frames.length} frames, $w×$h).';
       });
       if (mounted) _openGallery();
@@ -176,16 +259,50 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     if (p == null) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ResultsGalleryScreen(
-        headerSubtitle: widget.sessionId,
+        headerSubtitle: widget.label ?? widget.sessionId,
         pipeline: p,
       ),
     ));
   }
 
+  Future<void> _persistPreviews(StackPipelineOutput pipe) async {
+    final store = ref.read(sessionStoreProvider);
+    final r = pipe.reductions;
+    final entries = <(String, List<int>)>[
+      ('fusion-clahe.png', grayToPng(pipe.fusionClahe, pipe.width, pipe.height)),
+      ('fusion-retinex.png', grayToPng(pipe.fusionRetinex, pipe.width, pipe.height)),
+      ('fusion.png', grayToPng(pipe.fusion, pipe.width, pipe.height)),
+      ('range.png', grayToPng(r.rangeImg, r.width, r.height)),
+      ('stddev.png', grayToPng(r.stddevImg, r.width, r.height)),
+      ('max.png', grayToPng(r.maxImg, r.width, r.height)),
+      ('min.png', grayToPng(r.minImg, r.width, r.height)),
+    ];
+    for (final (name, bytes) in entries) {
+      await store.writePreview(widget.sessionId, name, bytes);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Session ${widget.sessionId}')),
+      appBar: AppBar(
+        title: Text(widget.label ?? widget.sessionId),
+        bottom: widget.label != null
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(18),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.sessionId,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                ),
+              )
+            : null,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

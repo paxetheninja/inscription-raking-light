@@ -37,6 +37,8 @@ class StackInput {
     required this.frames,
     this.lights,
     this.registrationMode = RegistrationMode.fast,
+    this.precomputedTransforms,
+    this.precomputedScores,
   });
 
   final int width;
@@ -52,6 +54,12 @@ class StackInput {
   /// Which registration algorithm to run before stacking. Defaults to
   /// [RegistrationMode.fast] (pyramid NCC translation).
   final RegistrationMode registrationMode;
+
+  /// When non-null, the pipeline skips the registration algorithm and uses
+  /// these transforms directly. Used to thread ORB+RANSAC results computed
+  /// on the main isolate (via opencv_dart) into this worker.
+  final List<FrameTransform>? precomputedTransforms;
+  final List<double>? precomputedScores;
 }
 
 /// Compute max / min / range / stddev across the stack on a background isolate.
@@ -158,6 +166,8 @@ StackPipelineOutput runStackPipelineSync(StackInput input) {
     height: input.height,
     frames: input.frames,
     mode: input.registrationMode,
+    precomputedTransforms: input.precomputedTransforms,
+    precomputedScores: input.precomputedScores,
   ));
   final alignedFrames = registration.warpedFrames;
   final w = registration.validRect.width;

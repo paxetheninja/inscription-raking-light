@@ -89,12 +89,21 @@ class RegistrationInput {
     required this.height,
     required this.frames,
     required this.mode,
+    this.precomputedTransforms,
+    this.precomputedScores,
   });
 
   final int width;
   final int height;
   final List<Uint8List> frames;
   final RegistrationMode mode;
+
+  /// Transforms computed on the main isolate (e.g. by ORB+RANSAC via
+  /// opencv_dart) and passed through to the worker isolate. When non-null,
+  /// [registerStack] skips the algorithm step and goes straight to baking
+  /// warped+cropped frames. Length must equal [frames.length].
+  final List<FrameTransform>? precomputedTransforms;
+  final List<double>? precomputedScores;
 }
 
 class RegistrationResult {
@@ -133,6 +142,22 @@ RegistrationResult registerStack(RegistrationInput input) {
   if (input.frames.isEmpty) {
     throw ArgumentError('No frames to register.');
   }
+
+  // Caller may have already computed transforms outside the worker isolate
+  // (e.g. ORB via opencv_dart). Just bake them.
+  final pre = input.precomputedTransforms;
+  if (pre != null) {
+    if (pre.length != input.frames.length) {
+      throw ArgumentError(
+        'precomputedTransforms length ${pre.length} != frames length '
+        '${input.frames.length}.',
+      );
+    }
+    final scores = input.precomputedScores ??
+        List<double>.filled(pre.length, 1.0);
+    return _bakeResult(input, pre, scores);
+  }
+
   switch (input.mode) {
     case RegistrationMode.none:
       return _passthrough(input);
@@ -141,8 +166,11 @@ RegistrationResult registerStack(RegistrationInput input) {
     case RegistrationMode.accurate:
       return _registerSimilarity(input);
     case RegistrationMode.orb:
-      throw UnimplementedError(
-          'ORB / OpenCV registration arrives in v0.9. Pick Fast or Accurate.');
+      throw StateError(
+        'ORB mode requires precomputed transforms — call '
+        'computeOrbTransforms() on the main isolate first and pass the '
+        'result via RegistrationInput.precomputedTransforms.',
+      );
   }
 }
 

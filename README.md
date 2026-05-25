@@ -132,8 +132,11 @@ Pinned to Flutter `3.38.8` to match the development environment.
   NCC translation, Accurate NCC + rotation/scale grid search), pre-stack
   alignment in the same isolate, valid-region crop, per-frame transforms
   written into the sidecar.
-- **v0.9** — OpenCV-backed registration (ORB + RANSAC for large
-  displacements, ECC for sub-pixel accuracy) via `opencv_dart`.
+- **v0.9** ✅ — ORB + RANSAC similarity registration via `opencv_dart`,
+  selectable in the same dropdown. Handles large displacements and tilt
+  that the pure-Dart Fast/Accurate modes can't bootstrap. Computed on
+  the main isolate (FFI handles aren't safe across isolate boundaries),
+  transforms then sent into the worker isolate for warp + crop + stack.
 - **v0.10** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
   raw on iOS via custom platform channels — significant native work).
 

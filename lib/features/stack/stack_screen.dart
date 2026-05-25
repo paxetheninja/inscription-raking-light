@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/image_ops/photometric_stereo.dart';
 import '../../core/image_ops/preview_loader.dart';
 import '../../core/image_ops/registration.dart';
+import '../../core/image_ops/registration_orb.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
 import 'results_gallery.dart';
@@ -258,8 +259,23 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         RegistrationMode.none => 'no alignment',
         RegistrationMode.fast => 'fast alignment',
         RegistrationMode.accurate => 'accurate alignment',
-        RegistrationMode.orb => 'ORB',
+        RegistrationMode.orb => 'ORB + RANSAC',
       };
+
+      // For ORB we compute the transforms on the main isolate via
+      // opencv_dart (its FFI handles aren't safe to send across isolate
+      // boundaries) and pass the resulting transforms into the worker.
+      List<FrameTransform>? preTransforms;
+      List<double>? preScores;
+      if (_registrationMode == RegistrationMode.orb) {
+        setState(() => _status = 'Running ORB feature matching on '
+            '${previews.length} frames…');
+        final frameBytes = previews.map((p) => p.bytes).toList();
+        final (t, s) = computeOrbTransforms(frameBytes, w, h);
+        preTransforms = t;
+        preScores = s;
+      }
+
       setState(() => _status = lights != null
           ? 'Aligning ($modeLabel) + reductions + fusion + CLAHE + Retinex + normal map…'
           : 'Aligning ($modeLabel) + reductions + fusion + CLAHE + Retinex…');
@@ -269,6 +285,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         frames: previews.map((p) => p.bytes).toList(),
         lights: lights,
         registrationMode: _registrationMode,
+        precomputedTransforms: preTransforms,
+        precomputedScores: preScores,
       ));
 
       setState(() {
@@ -429,8 +447,7 @@ class _RegistrationSelector extends StatelessWidget {
               ),
               DropdownMenuItem(
                 value: RegistrationMode.orb,
-                enabled: false,
-                child: Text('ORB — v0.9, OpenCV (coming soon)'),
+                child: Text('ORB + RANSAC — feature matching (OpenCV)'),
               ),
             ],
           ),

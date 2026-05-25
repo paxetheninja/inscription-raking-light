@@ -43,7 +43,7 @@ void main() {
       );
     });
 
-    test('ORB mode throws UnimplementedError', () {
+    test('ORB mode without precomputed transforms throws StateError', () {
       final f = Uint8List(16);
       expect(
         () => registerStack(RegistrationInput(
@@ -52,7 +52,39 @@ void main() {
           frames: [f, f],
           mode: RegistrationMode.orb,
         )),
-        throwsUnimplementedError,
+        throwsStateError,
+      );
+    });
+
+    test('Precomputed transforms are baked regardless of mode', () {
+      final f = Uint8List(16);
+      final result = registerStack(RegistrationInput(
+        width: 4,
+        height: 4,
+        frames: [f, f],
+        mode: RegistrationMode.orb,
+        precomputedTransforms: const [
+          FrameTransform.identity,
+          FrameTransform(tx: 1, ty: 1),
+        ],
+        precomputedScores: const [1.0, 0.85],
+      ));
+      expect(result.transforms, hasLength(2));
+      expect(result.transforms[1].tx, 1);
+      expect(result.scores[1], 0.85);
+    });
+
+    test('Precomputed transforms with wrong length throw', () {
+      final f = Uint8List(16);
+      expect(
+        () => registerStack(RegistrationInput(
+          width: 4,
+          height: 4,
+          frames: [f, f],
+          mode: RegistrationMode.orb,
+          precomputedTransforms: const [FrameTransform.identity],
+        )),
+        throwsArgumentError,
       );
     });
 

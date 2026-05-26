@@ -124,6 +124,50 @@ void main() {
       expect(result.scores[1], greaterThan(0.95));
     });
 
+    test('Fast mode rejects unrelated content (NCC below threshold)', () {
+      // Two independent random images share no signal — NCC has no peak that
+      // beats the 0.5 threshold, so the validator must fall back to identity
+      // rather than recovering a bogus large translation.
+      final a = _randomImage(128, 128, 1);
+      final b = _randomImage(128, 128, 999);
+
+      final result = registerStack(RegistrationInput(
+        width: 128,
+        height: 128,
+        frames: [a, b],
+        mode: RegistrationMode.fast,
+      ));
+      expect(result.transforms[1].isIdentity, isTrue);
+      // Score is reported even when rejected, so the caller (sidecar / UI)
+      // can flag low-quality alignments.
+      expect(result.scores[1], lessThan(0.5));
+    });
+
+    test('Fast mode rejects out-of-bounds translation', () {
+      // A frame whose only content is a small bright square in the corner,
+      // versus a reference with the same square in the opposite corner.
+      // The "true" translation is far larger than 10% of the dimensions, so
+      // the validator should reject and return identity.
+      const w = 128;
+      const h = 128;
+      final ref = Uint8List(w * h);
+      final src = Uint8List(w * h);
+      // 8×8 white square top-left in ref, bottom-right in src — ~120 px apart.
+      for (var y = 0; y < 8; y++) {
+        for (var x = 0; x < 8; x++) {
+          ref[y * w + x] = 255;
+          src[(h - 1 - y) * w + (w - 1 - x)] = 255;
+        }
+      }
+      final result = registerStack(RegistrationInput(
+        width: w,
+        height: h,
+        frames: [ref, src],
+        mode: RegistrationMode.fast,
+      ));
+      expect(result.transforms[1].isIdentity, isTrue);
+    });
+
     test('Fast mode crops the valid region', () {
       final ref = _randomImage(128, 128, 1);
       final shifted = _shifted(ref, 128, 128, 5, 0);
@@ -134,10 +178,12 @@ void main() {
         mode: RegistrationMode.fast,
       ));
       // Convention: x-shift of +5 in the source means tx ≈ -5; the valid x
-      // range in reference coords is [0, 128 + (-5)) = [0, 123).
+      // range in reference coords is [0, 128 + (-5)) = [0, 123). Sub-pixel
+      // refinement may shave one pixel off each dimension, so allow a tiny
+      // slack on the height (true ty=0 but recovered may be ±0.5 px).
       expect(result.validRect.width, lessThanOrEqualTo(128));
       expect(result.validRect.width, greaterThanOrEqualTo(120));
-      expect(result.validRect.height, 128);
+      expect(result.validRect.height, greaterThanOrEqualTo(126));
     });
   });
 

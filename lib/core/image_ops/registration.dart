@@ -1,6 +1,18 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'clahe.dart';
+
+/// Maximum translation accepted by the NCC alignment, as a fraction of the
+/// reference dimensions. Recovered translations larger than this are treated
+/// as bad matches (the NCC peak was noise, not signal) and replaced with
+/// identity so the frame doesn't get warped halfway off-screen.
+const double _maxTranslationFraction = 0.10;
+
+/// Minimum NCC score for an alignment to be accepted. Below this the peak
+/// isn't distinguishable from noise; fall back to identity for that frame.
+const double _minAcceptedNcc = 0.50;
+
 /// Which alignment algorithm the pipeline should run before stacking.
 enum RegistrationMode {
   /// No registration — assume frames are already pixel-aligned.
@@ -185,33 +197,99 @@ RegistrationResult _passthrough(RegistrationInput input) {
 }
 
 RegistrationResult _registerTranslationOnly(RegistrationInput input) {
-  final ref = input.frames.first;
   final w = input.width;
   final h = input.height;
-  final refPyramid = _buildPyramid(ref, w, h);
+  // CLAHE-preprocess every frame once, just for alignment scoring. The
+  // actual stack downstream uses the original (un-CLAHE'd) frames.
+  // CLAHE boosts NCC SNR substantially on weathered stone where the raw
+  // grayscale histogram is concentrated in a narrow midrange.
+  final enhanced = input.frames
+      .map((f) => clahe(f, w, h, tilesX: 8, tilesY: 8, clipLimit: 2.0))
+      .toList();
+  final refPyramid = _buildPyramid(enhanced.first, w, h);
   final transforms = <FrameTransform>[FrameTransform.identity];
   final scores = <double>[1.0];
 
-  for (var i = 1; i < input.frames.length; i++) {
-    final framePyramid = _buildPyramid(input.frames[i], w, h);
+  for (var i = 1; i < enhanced.length; i++) {
+    final framePyramid = _buildPyramid(enhanced[i], w, h);
     final (dx, dy, score) = _pyramidNccTranslation(refPyramid, framePyramid);
-    transforms.add(FrameTransform(tx: dx, ty: dy));
-    scores.add(score);
+    final (transform, acceptedScore) = _validateTranslation(dx, dy, score, w, h);
+    transforms.add(transform);
+    scores.add(acceptedScore);
   }
 
   return _bakeResult(input, transforms, scores);
 }
 
+/// Cap recovered translation to [_maxTranslationFraction] of dimensions and
+/// require [_minAcceptedNcc] score. On failure, return identity with score 0.
+(FrameTransform, double) _validateTranslation(
+  double dx,
+  double dy,
+  double score,
+  int w,
+  int h,
+) {
+  final maxTx = w * _maxTranslationFraction;
+  final maxTy = h * _maxTranslationFraction;
+  if (dx.abs() > maxTx ||
+      dy.abs() > maxTy ||
+      score < _minAcceptedNcc) {
+    return (FrameTransform.identity, score < 0 ? 0 : score);
+  }
+  return (FrameTransform(tx: dx, ty: dy), score);
+}
+
+/// Same validation for similarity transforms.
+(FrameTransform, double) _validateSimilarity(
+  double dx,
+  double dy,
+  double rotationRad,
+  double scale,
+  double score,
+  int w,
+  int h,
+) {
+  final maxTx = w * _maxTranslationFraction;
+  final maxTy = h * _maxTranslationFraction;
+  // Rotation and scale limits mirror the desktop pipeline's SIFT validation:
+  // scale ∈ [0.95, 1.05], rotation < 2°. Outside these the grid search likely
+  // latched onto a noise peak rather than the actual stone motion.
+  final rotDegAbs = (rotationRad * 180.0 / math.pi).abs();
+  if (dx.abs() > maxTx ||
+      dy.abs() > maxTy ||
+      rotDegAbs > 2.0 ||
+      scale < 0.95 ||
+      scale > 1.05 ||
+      score < _minAcceptedNcc) {
+    return (FrameTransform.identity, score < 0 ? 0 : score);
+  }
+  return (
+    FrameTransform(
+      tx: dx,
+      ty: dy,
+      rotationRad: rotationRad,
+      scale: scale,
+    ),
+    score,
+  );
+}
+
 RegistrationResult _registerSimilarity(RegistrationInput input) {
-  final ref = input.frames.first;
   final w = input.width;
   final h = input.height;
+  // CLAHE-preprocess for alignment estimation (originals are kept for the
+  // downstream stack). See [_registerTranslationOnly] for rationale.
+  final enhanced = input.frames
+      .map((f) => clahe(f, w, h, tilesX: 8, tilesY: 8, clipLimit: 2.0))
+      .toList();
+  final ref = enhanced.first;
   final refPyramid = _buildPyramid(ref, w, h);
   final transforms = <FrameTransform>[FrameTransform.identity];
   final scores = <double>[1.0];
 
-  for (var i = 1; i < input.frames.length; i++) {
-    final framePyramid = _buildPyramid(input.frames[i], w, h);
+  for (var i = 1; i < enhanced.length; i++) {
+    final framePyramid = _buildPyramid(enhanced[i], w, h);
     final (dx, dy, _) = _pyramidNccTranslation(refPyramid, framePyramid);
 
     // Grid-search rotation + scale at the top pyramid level (~64 px).
@@ -252,7 +330,7 @@ RegistrationResult _registerSimilarity(RegistrationInput input) {
     // Refine translation at full resolution given (rot, scale) above.
     final (rdx, rdy, finalScore) = _localNccTranslation(
       ref,
-      input.frames[i],
+      enhanced[i],
       w,
       h,
       rotationRad: bestRot,
@@ -262,13 +340,17 @@ RegistrationResult _registerSimilarity(RegistrationInput input) {
       searchRadius: 4,
     );
 
-    transforms.add(FrameTransform(
-      tx: rdx,
-      ty: rdy,
-      rotationRad: bestRot,
-      scale: bestScl,
-    ));
-    scores.add(finalScore);
+    final (transform, acceptedScore) = _validateSimilarity(
+      rdx,
+      rdy,
+      bestRot,
+      bestScl,
+      finalScore,
+      w,
+      h,
+    );
+    transforms.add(transform);
+    scores.add(acceptedScore);
   }
 
   return _bakeResult(input, transforms, scores);

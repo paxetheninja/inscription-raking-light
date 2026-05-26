@@ -19,7 +19,6 @@ import 'registration.dart';
   List<Uint8List> frames,
   int width,
   int height, {
-  int maxFeatures = 1000,
   int minInliers = 10,
 }) {
   if (frames.isEmpty) {
@@ -35,7 +34,13 @@ import 'registration.dart';
     cv.MatType.CV_8UC1,
     frames.first,
   );
-  final orb = cv.ORB.create(nFeatures: maxFeatures);
+  // ORB.empty() calls the native cv_ORB_create (parameterless), which is
+  // present in every opencv_dart build. ORB.create(nFeatures: …) calls
+  // cv_ORB_create_1, which is missing from some prebuilt platform binaries
+  // and triggers a runtime "could not resolve native function" error.
+  // The default nFeatures is 500 which is more than enough for stone-surface
+  // alignment, so we lose nothing by using the parameterless factory.
+  final orb = cv.ORB.empty();
   final (refKp, refDesc) = orb.detectAndCompute(refMat, cv.Mat.empty());
 
   final transforms = <FrameTransform>[FrameTransform.identity];

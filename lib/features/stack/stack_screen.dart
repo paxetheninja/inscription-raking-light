@@ -256,26 +256,42 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         if (allSet) lights = maybe;
       }
 
-      final modeLabel = switch (_registrationMode) {
-        RegistrationMode.none => 'no alignment',
-        RegistrationMode.fast => 'fast alignment',
-        RegistrationMode.accurate => 'accurate alignment',
-        RegistrationMode.orb => 'ORB + RANSAC',
-      };
-
       // For ORB we compute the transforms on the main isolate via
       // opencv_dart (its FFI handles aren't safe to send across isolate
       // boundaries) and pass the resulting transforms into the worker.
+      // If the native ORB symbol fails to resolve (some opencv_dart
+      // platform binaries ship without cv_ORB_create_1 etc.), we fall back
+      // to the pure-Dart Accurate mode and tell the user.
+      var effectiveMode = _registrationMode;
       List<FrameTransform>? preTransforms;
       List<double>? preScores;
       if (_registrationMode == RegistrationMode.orb) {
         setState(() => _status = 'Running ORB feature matching on '
             '${previews.length} frames…');
-        final frameBytes = previews.map((p) => p.bytes).toList();
-        final (t, s) = computeOrbTransforms(frameBytes, w, h);
-        preTransforms = t;
-        preScores = s;
+        try {
+          final frameBytes = previews.map((p) => p.bytes).toList();
+          final (t, s) = computeOrbTransforms(frameBytes, w, h);
+          preTransforms = t;
+          preScores = s;
+        } catch (e) {
+          effectiveMode = RegistrationMode.accurate;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(
+                'ORB unavailable on this device — falling back to Accurate. '
+                'Details: $e',
+              )),
+            );
+          }
+        }
       }
+
+      final modeLabel = switch (effectiveMode) {
+        RegistrationMode.none => 'no alignment',
+        RegistrationMode.fast => 'fast alignment',
+        RegistrationMode.accurate => 'accurate alignment',
+        RegistrationMode.orb => 'ORB + RANSAC',
+      };
 
       setState(() => _status = lights != null
           ? 'Aligning ($modeLabel) + reductions + fusion + CLAHE + Retinex + normal map…'
@@ -285,7 +301,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         height: h,
         frames: previews.map((p) => p.bytes).toList(),
         lights: lights,
-        registrationMode: _registrationMode,
+        registrationMode: effectiveMode,
         precomputedTransforms: preTransforms,
         precomputedScores: preScores,
       ));

@@ -219,6 +219,7 @@ class SessionStore {
     required String label,
     required String deviceModel,
     DateTime? now,
+    SidecarLocation? location,
   }) async {
     final t = now ?? DateTime.now();
     final id = _generateId(t);
@@ -228,6 +229,7 @@ class SessionStore {
       capturedAt: t,
       deviceModel: deviceModel,
       frames: [],
+      location: location,
     );
     await sessionDir(id);
     await writeSidecar(session);

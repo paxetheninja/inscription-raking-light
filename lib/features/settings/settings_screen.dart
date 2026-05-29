@@ -96,6 +96,16 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.autoAdvanceDefault,
             onChanged: notifier.setAutoAdvanceDefault,
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.place_outlined),
+            title: const Text('Tag location on capture'),
+            subtitle: const Text(
+                'Save the find-spot GPS coordinates into each session\'s '
+                'sidecar. Off by default. The first time you turn this on, '
+                'the system asks you to grant location permission.'),
+            value: settings.tagLocationOnCapture,
+            onChanged: notifier.setTagLocationOnCapture,
+          ),
 
           _SectionHeader(label: 'Onboarding'),
           ListTile(

@@ -10,6 +10,7 @@ class AppSettings {
     this.autoAdvanceDefault = true,
     this.themeMode = ThemeMode.system,
     this.hasSeenTutorial = false,
+    this.tagLocationOnCapture = false,
   });
 
   /// Long-edge size for the on-device preview pipeline. The desktop pipeline
@@ -28,6 +29,11 @@ class AppSettings {
   /// Whether the first-launch tutorial has been completed at least once.
   final bool hasSeenTutorial;
 
+  /// When true, the Capture flow attempts a single GPS fix at the start of
+  /// each new session and writes it into the sidecar. Off by default — the
+  /// user must opt in, and a permission prompt fires the first time.
+  final bool tagLocationOnCapture;
+
   static const previewMaxEdgeOptions = [768, 1024, 1536];
 
   AppSettings copyWith({
@@ -36,6 +42,7 @@ class AppSettings {
     bool? autoAdvanceDefault,
     ThemeMode? themeMode,
     bool? hasSeenTutorial,
+    bool? tagLocationOnCapture,
   }) =>
       AppSettings(
         previewMaxEdge: previewMaxEdge ?? this.previewMaxEdge,
@@ -43,5 +50,7 @@ class AppSettings {
         autoAdvanceDefault: autoAdvanceDefault ?? this.autoAdvanceDefault,
         themeMode: themeMode ?? this.themeMode,
         hasSeenTutorial: hasSeenTutorial ?? this.hasSeenTutorial,
+        tagLocationOnCapture:
+            tagLocationOnCapture ?? this.tagLocationOnCapture,
       );
 }

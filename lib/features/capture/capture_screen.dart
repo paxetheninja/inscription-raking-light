@@ -7,9 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/location/location_service.dart';
 import '../../core/session/session.dart';
 import '../../core/session/session_providers.dart';
 import '../../core/settings/settings_providers.dart';
+import '../../core/sidecar/sidecar_schema.dart';
 import 'light_direction.dart';
 
 /// Capture tab — idle until the user starts (or resumes) a session, then
@@ -80,10 +82,37 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     });
     try {
       await _ensureCamera();
+
+      // If the user opted into location tagging, try to get a fix before
+      // creating the session so it lands in the sidecar from the start.
+      // We deliberately tolerate failure here — denied/timeout just means
+      // the session has no location, which is the same as the default.
+      SidecarLocation? location;
+      String? locationNote;
+      if (ref.read(settingsProvider).tagLocationOnCapture) {
+        setState(() => _error = 'Getting GPS fix…');
+        final result = await tryFetchLocation();
+        switch (result) {
+          case LocationOk(:final value):
+            location = value;
+          case LocationDenied(:final message):
+            locationNote = message;
+          case LocationDisabled():
+            locationNote = 'Location services are off. Session saved without coordinates.';
+          case LocationTimedOut():
+            locationNote = 'GPS fix timed out. Session saved without coordinates.';
+          case LocationError(:final message):
+            locationNote = 'Location error: $message';
+        }
+        // Clear the transient "Getting GPS fix…" status.
+        if (mounted) setState(() => _error = locationNote);
+      }
+
       final store = ref.read(sessionStoreProvider);
       _session = await store.createSession(
         label: label,
         deviceModel: _deviceModel(),
+        location: location,
       );
       _light = _autoAdvance ? LightDirection.fromStep(0) : const LightDirection();
       _locked = false;
@@ -368,6 +397,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   }
 }
 
+String _formatCoord(SidecarLocation loc) {
+  final lat = loc.lat;
+  final lon = loc.lon;
+  final ns = lat >= 0 ? 'N' : 'S';
+  final ew = lon >= 0 ? 'E' : 'W';
+  return '${lat.abs().toStringAsFixed(4)}°$ns, '
+      '${lon.abs().toStringAsFixed(4)}°$ew';
+}
+
 class _IdleView extends StatelessWidget {
   const _IdleView({
     required this.onStart,
@@ -480,6 +518,14 @@ class _ActiveView extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (session.location != null) ...[
+                Chip(
+                  avatar: const Icon(Icons.place, size: 14),
+                  label: Text(_formatCoord(session.location!)),
+                  visualDensity: VisualDensity.compact,
+                ),
+                const SizedBox(width: 6),
+              ],
               Chip(
                 avatar:
                     Icon(locked ? Icons.lock : Icons.lock_open, size: 16),

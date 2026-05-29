@@ -10,6 +10,7 @@ class Session {
     required this.frames,
     this.scaleMmPerPixel,
     this.notes,
+    this.location,
   });
 
   /// Reconstruct an in-memory [Session] from a previously-written sidecar.
@@ -36,6 +37,7 @@ class Session {
           .toList(),
       scaleMmPerPixel: sc.scaleMmPerPixel,
       notes: sc.notes,
+      location: sc.location,
     );
   }
 
@@ -53,6 +55,7 @@ class Session {
 
   double? scaleMmPerPixel;
   String? notes;
+  SidecarLocation? location;
 
   SidecarV1 toSidecar() => SidecarV1(
         sessionId: id,
@@ -61,6 +64,7 @@ class Session {
         deviceModel: deviceModel,
         scaleMmPerPixel: scaleMmPerPixel,
         notes: notes,
+        location: location,
         frames: frames
             .map((f) => SidecarFrame(
                   file: 'raw/${f.filename}',

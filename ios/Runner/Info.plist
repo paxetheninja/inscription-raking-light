@@ -47,6 +47,9 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture raking-light bursts of inscriptions.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Optional — tag each capture session with the find spot of the
+	inscription. Disabled by default; you can turn it on in Settings.</string>
 	<!--
 	  Encryption export compliance. Stela only uses the platform's built-in
 	  HTTPS / TLS through `url_launcher` (for the About-tab links). That is

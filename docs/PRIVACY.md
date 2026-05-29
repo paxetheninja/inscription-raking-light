@@ -68,8 +68,9 @@ only when you explicitly use the share sheet.
 | **Camera** | To capture the raking-light photographs. Stela never opens the camera without you tapping the shutter inside the app. |
 | **Photo library "add" (iOS)** | So that exported session zips can be saved to your library when you choose that destination from the share sheet. Stela never reads from the photo library. |
 | **File access via the system file picker** | To let you import a previously-exported session zip from another location. |
+| **Location, when in use *(optional)*** | Off by default. Only requested if you turn on **Settings → Capture → Tag location on capture**. When enabled, Stela attempts a single GPS fix at the start of each new session and writes the latitude / longitude / accuracy into the session's local `sidecar.json` so you can correlate captures with the find-spot of an inscription. The coordinates never leave the device unless you export the session and share the zip yourself. |
 
-No location, no microphone, no contacts, no notifications.
+No microphone, no contacts, no notifications.
 
 ## Network
 

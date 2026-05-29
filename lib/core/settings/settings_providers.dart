@@ -24,6 +24,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kAutoAdvanceDefault = 'autoAdvanceDefault';
   static const _kThemeMode = 'themeMode';
   static const _kHasSeenTutorial = 'hasSeenTutorial';
+  static const _kTagLocationOnCapture = 'tagLocationOnCapture';
 
   static AppSettings _load(SharedPreferences p) {
     final regIdx = p.getInt(_kDefaultRegistration);
@@ -44,6 +45,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       autoAdvanceDefault: p.getBool(_kAutoAdvanceDefault) ?? true,
       themeMode: theme,
       hasSeenTutorial: p.getBool(_kHasSeenTutorial) ?? false,
+      tagLocationOnCapture: p.getBool(_kTagLocationOnCapture) ?? false,
     );
   }
 
@@ -70,6 +72,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setHasSeenTutorial(bool value) async {
     await _prefs.setBool(_kHasSeenTutorial, value);
     state = state.copyWith(hasSeenTutorial: value);
+  }
+
+  Future<void> setTagLocationOnCapture(bool value) async {
+    await _prefs.setBool(_kTagLocationOnCapture, value);
+    state = state.copyWith(tagLocationOnCapture: value);
   }
 
   Future<void> resetOnboarding() => setHasSeenTutorial(false);

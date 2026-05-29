@@ -42,6 +42,39 @@ void main() {
     expect(restored.frames[1].lightAzimuthDeg, 312.5);
   });
 
+  test('SidecarLocation round-trips through JSON', () {
+    const loc = SidecarLocation(
+      lat: 47.0707,
+      lon: 15.4395,
+      timestampMs: 1779789853000,
+      accuracyM: 12.5,
+      altitudeM: 380,
+    );
+    final j = loc.toJson();
+    final back = SidecarLocation.fromJson(j);
+    expect(back.lat, loc.lat);
+    expect(back.lon, loc.lon);
+    expect(back.timestampMs, loc.timestampMs);
+    expect(back.accuracyM, loc.accuracyM);
+    expect(back.altitudeM, loc.altitudeM);
+  });
+
+  test('SidecarV1 with location round-trips', () {
+    final s = SidecarV1(
+      sessionId: 's_x',
+      label: 'Weber',
+      capturedAt: '2026-05-29T10:00:00Z',
+      deviceModel: 'iPhone',
+      location: const SidecarLocation(
+        lat: 47.07, lon: 15.44, timestampMs: 1, accuracyM: 8.0),
+      frames: const [],
+    );
+    final restored = SidecarV1.fromJson(s.toJson());
+    expect(restored.location?.lat, 47.07);
+    expect(restored.location?.lon, 15.44);
+    expect(restored.location?.accuracyM, 8.0);
+  });
+
   test('Optional fields are omitted from JSON when null', () {
     final s = SidecarV1(
       sessionId: 's_x',

@@ -13,6 +13,7 @@ class SidecarV1 {
     this.scaleMmPerPixel,
     this.notes,
     this.registration,
+    this.location,
   });
 
   /// Stable session id (ulid).
@@ -39,6 +40,11 @@ class SidecarV1 {
   /// scores. Null until the Stack screen has run at least once.
   final SidecarRegistration? registration;
 
+  /// Optional GPS fix recorded when the session was started. Only present
+  /// if the user has enabled "Tag location" in Settings and granted the
+  /// runtime location permission.
+  final SidecarLocation? location;
+
   Map<String, dynamic> toJson() => {
         'schema': 'inscription-raking-light/sidecar@1',
         'session_id': sessionId,
@@ -48,6 +54,7 @@ class SidecarV1 {
         if (scaleMmPerPixel != null) 'scale_mm_per_pixel': scaleMmPerPixel,
         if (notes != null) 'notes': notes,
         if (registration != null) 'registration': registration!.toJson(),
+        if (location != null) 'location': location!.toJson(),
         'frames': frames.map((f) => f.toJson()).toList(),
       };
 
@@ -62,9 +69,45 @@ class SidecarV1 {
             ? null
             : SidecarRegistration.fromJson(
                 j['registration'] as Map<String, dynamic>),
+        location: j['location'] == null
+            ? null
+            : SidecarLocation.fromJson(
+                j['location'] as Map<String, dynamic>),
         frames: ((j['frames'] as List?) ?? const [])
             .map((e) => SidecarFrame.fromJson(e as Map<String, dynamic>))
             .toList(),
+      );
+}
+
+class SidecarLocation {
+  const SidecarLocation({
+    required this.lat,
+    required this.lon,
+    required this.timestampMs,
+    this.accuracyM,
+    this.altitudeM,
+  });
+
+  final double lat;
+  final double lon;
+  final int timestampMs;
+  final double? accuracyM;
+  final double? altitudeM;
+
+  Map<String, dynamic> toJson() => {
+        'lat': lat,
+        'lon': lon,
+        'timestamp_ms': timestampMs,
+        if (accuracyM != null) 'accuracy_m': accuracyM,
+        if (altitudeM != null) 'altitude_m': altitudeM,
+      };
+
+  static SidecarLocation fromJson(Map<String, dynamic> j) => SidecarLocation(
+        lat: (j['lat'] as num).toDouble(),
+        lon: (j['lon'] as num).toDouble(),
+        timestampMs: (j['timestamp_ms'] as num).toInt(),
+        accuracyM: (j['accuracy_m'] as num?)?.toDouble(),
+        altitudeM: (j['altitude_m'] as num?)?.toDouble(),
       );
 }
 

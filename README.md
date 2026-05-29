@@ -144,21 +144,50 @@ Pinned to Flutter `3.38.8` to match the development environment.
   (`stddev + range/2`), multi-scale Difference of Gaussians, and
   black-hat morphology on the fusion image. Retinex now CLAHE-chained
   to match the desktop pipeline.
-- **v0.11** — DNG capture (Camera2 RAW_SENSOR on Android / AVCapturePhoto
-  raw on iOS via custom platform channels).
+- **v0.11** ✅ — App-shell polish: Settings + About + theme support, global
+  AppBar with the tutorial replay icon and an overflow menu, six-step
+  introduction_screen first-launch carousel, mass export via long-press
+  multi-select on the Export tab (combined into one zip), editable
+  session notes, and a "Report a problem" mailto link in About + Settings.
+  Session import via `.zip` (capture and re-import survives uninstall).
+
+## Planned (in priority order)
+
+These are on the queue but not actively in progress.
+
+- **Geolocation tagging on capture.** Per-session GPS coordinates
+  (with explicit permission). Sidecar gets `location: {lat, lon, acc}`.
+  Needs the `geolocator` package + iOS / Android usage strings. Useful
+  for archaeology where each stone has a known find spot.
+- **Session search / filter.** Once 30+ sessions accumulate, finding
+  "all Weber stones from 2026" needs more than scrolling. Text search
+  on label + notes + tags, date range filter, calibrated-only filter.
+- **Multi-frame Measure.** Currently the Measure tab shows the first
+  frame in a fixed-fit canvas. Add an `InteractiveViewer` (pan + zoom)
+  and a frame picker so you can switch between frames to find a sharper
+  one for calibration or place markers more precisely.
+- **Reference scale auto-detection.** Find a ruler in the frame
+  automatically (template matching against a stock ruler image, or
+  edge-detected linear feature with regularly-spaced ticks). Removes a
+  manual step in Measure.
+- **DNG capture** (already on the original roadmap as v0.7's deferred
+  half) — Camera2 `RAW_SENSOR` on Android / `AVCapturePhotoSettings.rawPixelFormatType`
+  on iOS via custom platform channels. Significant native work.
 
 ## Status
 
-v0.5 — the on-device loop works end-to-end:
+v0.11 — the on-device loop works end-to-end:
 
 1. **Capture** a burst with AE/AF locked, optionally tagging each frame with
    a coarse light direction (8 compass azimuths × 3 elevations).
-2. **Stack** the session and run the full enhancement pipeline: per-pixel
-   reductions, Mertens-style fusion, fusion+CLAHE, fusion+Retinex.
+2. **Stack** the session — registration (None / Fast / Accurate / ORB), then
+   reductions, Mertens fusion, CLAHE, Retinex, PCA layers, multi-scale DoG,
+   combined relief, black hat, and photometric-stereo normal map.
 3. **Measure** by tapping two points on a ruler in a captured frame, enter
    the real distance in mm, then switch to Measure mode to read letter
    heights and stroke widths off the image.
+4. **Export** individual sessions or bundle several via multi-select; import
+   exported zips back after a reinstall.
 
-All session data persists under the app's documents directory as
-`sessions/<id>/raw/*.jpg` + `sidecar.json` (now including light direction
-per frame and `scale_mm_per_pixel` per session).
+Settings + About are reachable from the global AppBar overflow menu;
+first-launch tutorial walks new users through the loop above.

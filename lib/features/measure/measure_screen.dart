@@ -22,13 +22,24 @@ enum _Mode { calibrate, measure }
 
 class _MeasureScreenState extends ConsumerState<MeasureScreen> {
   String? _sessionId;
-  File? _frame;
+  List<File> _frames = const [];
+  int _frameIndex = 0;
   Size? _imageSize;
   double? _scaleMmPerPx;
+  final _xform = TransformationController();
 
   _Mode _mode = _Mode.calibrate;
   Offset? _a;
   Offset? _b;
+
+  File? get _frame =>
+      _frames.isEmpty ? null : _frames[_frameIndex.clamp(0, _frames.length - 1)];
+
+  @override
+  void dispose() {
+    _xform.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +81,18 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen> {
               }),
               scale: _scaleMmPerPx,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            if (_frames.length > 1)
+              _FrameSwitcher(
+                index: _frameIndex,
+                total: _frames.length,
+                onPrev: () => _setFrameIndex(_frameIndex - 1),
+                onNext: () => _setFrameIndex(_frameIndex + 1),
+                onReset: _xform.value == Matrix4.identity()
+                    ? null
+                    : () => setState(() => _xform.value = Matrix4.identity()),
+              ),
+            const SizedBox(height: 4),
             Expanded(
               child: _FrameCanvas(
                 frame: _frame!,
@@ -78,6 +100,7 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen> {
                 a: _a,
                 b: _b,
                 onTap: _placeMarker,
+                xform: _xform,
               ),
             ),
             const SizedBox(height: 8),
@@ -97,28 +120,38 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen> {
   Future<void> _selectSession(String? id) async {
     setState(() {
       _sessionId = id;
-      _frame = null;
+      _frames = const [];
+      _frameIndex = 0;
       _imageSize = null;
       _scaleMmPerPx = null;
       _a = null;
       _b = null;
+      _xform.value = Matrix4.identity();
     });
     if (id == null) return;
     final store = ref.read(sessionStoreProvider);
     final sc = await store.readSidecar(id);
     final frames = await store.listFrames(id);
     if (!mounted) return;
-    if (frames.isEmpty) {
-      setState(() => _frame = null);
-      return;
-    }
+    if (frames.isEmpty) return;
     final size = await _loadImageSize(frames.first);
     if (!mounted) return;
     setState(() {
-      _frame = frames.first;
+      _frames = frames;
+      _frameIndex = 0;
       _imageSize = size;
       _scaleMmPerPx = sc?.scaleMmPerPixel;
     });
+  }
+
+  void _setFrameIndex(int idx) {
+    if (_frames.isEmpty) return;
+    final next = idx.clamp(0, _frames.length - 1);
+    if (next == _frameIndex) return;
+    // Keep markers and zoom across frame switches — session frames share
+    // dimensions (same camera + same crop after registration), so marker
+    // positions and the panned/zoomed view remain meaningful.
+    setState(() => _frameIndex = next);
   }
 
   void _placeMarker(Offset imagePoint) {
@@ -283,6 +316,7 @@ class _FrameCanvas extends StatelessWidget {
     required this.a,
     required this.b,
     required this.onTap,
+    required this.xform,
   });
 
   final File frame;
@@ -290,6 +324,7 @@ class _FrameCanvas extends StatelessWidget {
   final Offset? a;
   final Offset? b;
   final ValueChanged<Offset> onTap;
+  final TransformationController xform;
 
   @override
   Widget build(BuildContext context) {
@@ -302,25 +337,84 @@ class _FrameCanvas extends StatelessWidget {
         final dispW = imageSize.width * scale;
         final dispH = imageSize.height * scale;
         return Center(
-          child: SizedBox(
-            width: dispW,
-            height: dispH,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (d) => onTap(d.localPosition / scale),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.file(frame, fit: BoxFit.fill),
-                  CustomPaint(
-                    painter: _MarkerPainter(scale: scale, a: a, b: b),
+          child: ClipRect(
+            child: SizedBox(
+              width: dispW,
+              height: dispH,
+              // InteractiveViewer maps tap input back to the child's
+              // untransformed coordinate space, so the GestureDetector
+              // inside still receives localPosition in display pixels —
+              // the existing /scale conversion to image coords is unchanged.
+              child: InteractiveViewer(
+                transformationController: xform,
+                minScale: 1.0,
+                maxScale: 8.0,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (d) => onTap(d.localPosition / scale),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.file(frame, fit: BoxFit.fill),
+                      CustomPaint(
+                        painter: _MarkerPainter(scale: scale, a: a, b: b),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _FrameSwitcher extends StatelessWidget {
+  const _FrameSwitcher({
+    required this.index,
+    required this.total,
+    required this.onPrev,
+    required this.onNext,
+    required this.onReset,
+  });
+
+  final int index;
+  final int total;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback? onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          tooltip: 'Previous frame',
+          onPressed: index > 0 ? onPrev : null,
+          icon: const Icon(Icons.chevron_left),
+          visualDensity: VisualDensity.compact,
+        ),
+        Text(
+          'frame ${index + 1} / $total',
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+        IconButton(
+          tooltip: 'Next frame',
+          onPressed: index < total - 1 ? onNext : null,
+          icon: const Icon(Icons.chevron_right),
+          visualDensity: VisualDensity.compact,
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Reset zoom',
+          onPressed: onReset,
+          icon: const Icon(Icons.zoom_out_map),
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
     );
   }
 }

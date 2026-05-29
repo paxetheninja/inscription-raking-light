@@ -32,4 +32,33 @@ class SessionArchiver {
     await encoder.close();
     return File(zipPath);
   }
+
+  /// Bundle multiple sessions into a single zip. Each session becomes a
+  /// top-level subdirectory inside the archive, keyed by session id —
+  /// so unzipping the result on the desktop reproduces the same
+  /// `<id>/raw/`, `<id>/preview/`, `<id>/sidecar.json` layout the
+  /// desktop pipeline expects.
+  ///
+  /// Returns a single `.zip` file in the OS temp directory whose name
+  /// embeds the export timestamp.
+  Future<File> zipMultipleSessions(List<String> sessionIds) async {
+    if (sessionIds.isEmpty) {
+      throw ArgumentError('No sessions to export.');
+    }
+    final tmp = await getTemporaryDirectory();
+    final stamp = DateTime.now().toUtc().millisecondsSinceEpoch.toRadixString(16);
+    final zipPath = p.join(tmp.path, 'stela-export-$stamp.zip');
+    final existing = File(zipPath);
+    if (await existing.exists()) await existing.delete();
+
+    final encoder = ZipFileEncoder();
+    encoder.create(zipPath);
+    for (final id in sessionIds) {
+      final dir = await store.sessionDir(id);
+      if (!await dir.exists()) continue;
+      await encoder.addDirectory(dir, includeDirName: true);
+    }
+    await encoder.close();
+    return File(zipPath);
+  }
 }

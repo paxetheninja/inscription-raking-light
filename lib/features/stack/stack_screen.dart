@@ -11,14 +11,48 @@ import '../../core/image_ops/registration_orb.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
 import '../../core/settings/settings_providers.dart';
+import '../../core/sidecar/sidecar_schema.dart';
 import 'results_gallery.dart';
 
-class StackScreen extends ConsumerWidget {
+class StackScreen extends ConsumerStatefulWidget {
   const StackScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StackScreen> createState() => _StackScreenState();
+}
+
+class _StackScreenState extends ConsumerState<StackScreen> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  bool _calibratedOnly = false;
+  bool _withNotesOnly = false;
+  bool _withLocationOnly = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _matchesFilters(SidecarV1? sc) {
+    if (sc == null) return false;
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      final inLabel = sc.label.toLowerCase().contains(q);
+      final inNotes = (sc.notes ?? '').toLowerCase().contains(q);
+      final inId = sc.sessionId.toLowerCase().contains(q);
+      if (!inLabel && !inNotes && !inId) return false;
+    }
+    if (_calibratedOnly && sc.scaleMmPerPixel == null) return false;
+    if (_withNotesOnly && (sc.notes ?? '').trim().isEmpty) return false;
+    if (_withLocationOnly && sc.location == null) return false;
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ids = ref.watch(sessionListProvider);
+    final sidecars = ref.watch(sessionSidecarsProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Column(
@@ -29,6 +63,53 @@ class StackScreen extends ConsumerWidget {
             'PCA layers, normal map, and more.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search label, notes, or id',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            children: [
+              FilterChip(
+                label: const Text('calibrated'),
+                avatar: const Icon(Icons.straighten, size: 14),
+                selected: _calibratedOnly,
+                onSelected: (v) => setState(() => _calibratedOnly = v),
+                visualDensity: VisualDensity.compact,
+              ),
+              FilterChip(
+                label: const Text('has notes'),
+                avatar: const Icon(Icons.sticky_note_2_outlined, size: 14),
+                selected: _withNotesOnly,
+                onSelected: (v) => setState(() => _withNotesOnly = v),
+                visualDensity: VisualDensity.compact,
+              ),
+              FilterChip(
+                label: const Text('has location'),
+                avatar: const Icon(Icons.place_outlined, size: 14),
+                selected: _withLocationOnly,
+                onSelected: (v) => setState(() => _withLocationOnly = v),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: ids.when(
@@ -38,21 +119,66 @@ class StackScreen extends ConsumerWidget {
                 if (list.isEmpty) {
                   return const _Empty();
                 }
+                // Filter on top of the sidecars cache. While the sidecar
+                // map is still loading, we render the unfiltered list so
+                // the user never sees a stuck spinner just because filters
+                // are inactive.
+                final scMap = sidecars.value;
+                final filtered = scMap == null
+                    ? list
+                    : list.where((id) => _matchesFilters(scMap[id])).toList();
+                if (filtered.isEmpty) {
+                  return _NoMatches(
+                    hasQuery: _query.isNotEmpty ||
+                        _calibratedOnly ||
+                        _withNotesOnly ||
+                        _withLocationOnly,
+                  );
+                }
                 return RefreshIndicator(
                   onRefresh: () async {
                     ref.invalidate(sessionListProvider);
                     await ref.read(sessionListProvider.future);
                   },
                   child: ListView.separated(
-                    itemCount: list.length,
+                    itemCount: filtered.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) => _SessionTile(sessionId: list[i]),
+                    itemBuilder: (ctx, i) => _SessionTile(sessionId: filtered[i]),
                   ),
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NoMatches extends StatelessWidget {
+  const _NoMatches({required this.hasQuery});
+  final bool hasQuery;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off,
+                size: 40, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 8),
+            Text(
+              hasQuery
+                  ? 'No sessions match your search and filters.'
+                  : 'No sessions yet.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
       ),
     );
   }

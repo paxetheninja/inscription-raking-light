@@ -121,7 +121,72 @@ void main() {
       expect(result.transforms[0].isIdentity, isTrue);
       expect(result.transforms[1].tx, closeTo(-3, 0.6));
       expect(result.transforms[1].ty, closeTo(-2, 0.6));
-      expect(result.scores[1], greaterThan(0.95));
+      // DoG-filtered NCC scores are lower than raw-intensity NCC scores
+      // because band-pass maps have less signal energy. They still clear
+      // the acceptance threshold (0.30) by a comfortable margin.
+      expect(result.scores[1], greaterThan(0.30));
+    });
+
+    test('Fast mode survives wildly different illumination across frames', () {
+      // Reproduces the field-data failure: same stone structure (random edges +
+      // a few "groove" features), but each frame has a strong illumination
+      // gradient from a different direction. Without DoG preprocessing, NCC
+      // anti-correlates these frames and rejects everything; with DoG, the
+      // illumination drops out and NCC finds the actual (small) translation.
+      const w = 128;
+      const h = 128;
+      final rand = math.Random(42);
+      // Base "stone" with high-frequency texture and a few darker grooves.
+      final base = Uint8List(w * h);
+      for (var i = 0; i < base.length; i++) {
+        base[i] = 100 + rand.nextInt(40);
+      }
+      // Add three horizontal "grooves" (darker bands) — the illumination-
+      // invariant feature we want alignment to lock onto.
+      for (final gy in const [40, 70, 100]) {
+        for (var x = 10; x < w - 10; x++) {
+          for (var y = gy; y < gy + 3; y++) {
+            base[y * w + x] = 30;
+          }
+        }
+      }
+
+      // Frame A: light from the left → bright gradient on the left.
+      final frameA = Uint8List(w * h);
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          final illum = (60 * (1.0 - x / w)).round();
+          frameA[y * w + x] = (base[y * w + x] + illum).clamp(0, 255);
+        }
+      }
+
+      // Frame B: same structure shifted by (3, 2), light from the RIGHT.
+      final frameB = Uint8List(w * h);
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          final sx = x - 3;
+          final sy = y - 2;
+          final baseVal = (sx >= 0 && sy >= 0 && sx < w && sy < h)
+              ? base[sy * w + sx]
+              : 100;
+          final illum = (60 * (x / w)).round();
+          frameB[y * w + x] = (baseVal + illum).clamp(0, 255);
+        }
+      }
+
+      final result = registerStack(RegistrationInput(
+        width: w,
+        height: h,
+        frames: [frameA, frameB],
+        mode: RegistrationMode.fast,
+      ));
+
+      // Recovered translation should match the synthetic shift within a
+      // couple of pixels despite the opposed illumination.
+      expect(result.transforms[1].tx, closeTo(-3, 2.0));
+      expect(result.transforms[1].ty, closeTo(-2, 2.0));
+      // And the score should clear the post-DoG threshold (0.30).
+      expect(result.scores[1], greaterThan(0.30));
     });
 
     test('Fast mode rejects unrelated content (NCC below threshold)', () {
@@ -139,8 +204,8 @@ void main() {
       ));
       expect(result.transforms[1].isIdentity, isTrue);
       // Score is reported even when rejected, so the caller (sidecar / UI)
-      // can flag low-quality alignments.
-      expect(result.scores[1], lessThan(0.5));
+      // can flag low-quality alignments. Threshold is 0.30 on DoG maps.
+      expect(result.scores[1], lessThan(0.30));
     });
 
     test('Fast mode rejects out-of-bounds translation', () {

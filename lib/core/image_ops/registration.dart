@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'clahe.dart';
+import 'gaussian.dart';
 
 /// Maximum translation accepted by the NCC alignment, as a fraction of the
 /// reference dimensions. Recovered translations larger than this are treated
@@ -11,7 +12,18 @@ const double _maxTranslationFraction = 0.10;
 
 /// Minimum NCC score for an alignment to be accepted. Below this the peak
 /// isn't distinguishable from noise; fall back to identity for that frame.
-const double _minAcceptedNcc = 0.50;
+///
+/// Lower than a naive "0.5" because we run NCC on DoG-filtered band-pass
+/// maps (see [_preprocessForAlignment]), whose signal energy is lower than
+/// raw intensity images — the *correct* peaks land in the 0.4 – 0.7 range.
+const double _minAcceptedNcc = 0.30;
+
+/// Sigma pair for the alignment band-pass. The high-sigma blur estimates
+/// the slowly-varying illumination component (which changes per-frame under
+/// raking light), the low-sigma blur keeps fine structure; their difference
+/// is the illumination-invariant edge map we actually compare.
+const double _alignDogSigmaLow = 2.0;
+const double _alignDogSigmaHigh = 8.0;
 
 /// Which alignment algorithm the pipeline should run before stacking.
 enum RegistrationMode {
@@ -199,12 +211,12 @@ RegistrationResult _passthrough(RegistrationInput input) {
 RegistrationResult _registerTranslationOnly(RegistrationInput input) {
   final w = input.width;
   final h = input.height;
-  // CLAHE-preprocess every frame once, just for alignment scoring. The
-  // actual stack downstream uses the original (un-CLAHE'd) frames.
-  // CLAHE boosts NCC SNR substantially on weathered stone where the raw
-  // grayscale histogram is concentrated in a narrow midrange.
+  // Preprocess every frame once for alignment scoring. The actual stack
+  // downstream uses the original (un-preprocessed) frames. The preprocess
+  // makes NCC illumination-invariant — critical for raking-light where the
+  // bright/dark pattern flips with each light direction.
   final enhanced = input.frames
-      .map((f) => clahe(f, w, h, tilesX: 8, tilesY: 8, clipLimit: 2.0))
+      .map((f) => _preprocessForAlignment(f, w, h))
       .toList();
   final refPyramid = _buildPyramid(enhanced.first, w, h);
   final transforms = <FrameTransform>[FrameTransform.identity];
@@ -278,10 +290,10 @@ RegistrationResult _registerTranslationOnly(RegistrationInput input) {
 RegistrationResult _registerSimilarity(RegistrationInput input) {
   final w = input.width;
   final h = input.height;
-  // CLAHE-preprocess for alignment estimation (originals are kept for the
-  // downstream stack). See [_registerTranslationOnly] for rationale.
+  // Preprocess for alignment estimation (originals are kept for the
+  // downstream stack). See [_registerTranslationOnly] / [_preprocessForAlignment].
   final enhanced = input.frames
-      .map((f) => clahe(f, w, h, tilesX: 8, tilesY: 8, clipLimit: 2.0))
+      .map((f) => _preprocessForAlignment(f, w, h))
       .toList();
   final ref = enhanced.first;
   final refPyramid = _buildPyramid(ref, w, h);
@@ -458,6 +470,11 @@ List<_PyramidLevel> _buildPyramid(Uint8List src, int w, int h) {
   bestScore = searchTop.$3;
 
   // Finer levels — refine by ±2 px around the upsampled estimate.
+  // Track the maximum NCC across all levels rather than overwriting with
+  // each finer level. Refinement at fine resolution can score lower than
+  // the coarse-level match because per-pixel highlight detail (which moves
+  // with the raking-light direction) starts dominating; we want to report
+  // the highest-confidence measurement we found, not the noisiest one.
   for (var L = top - 1; L >= 0; L--) {
     dx *= 2;
     dy *= 2;
@@ -474,7 +491,7 @@ List<_PyramidLevel> _buildPyramid(Uint8List src, int w, int h) {
     );
     dx = ref.$1;
     dy = ref.$2;
-    bestScore = ref.$3;
+    if (ref.$3 > bestScore) bestScore = ref.$3;
   }
 
   // Sub-pixel quadratic refinement (parabola fit around the peak in x and y).
@@ -743,6 +760,49 @@ ValidRect _intersectValidRect(
     y1 = math.min(y1, maxY.floor());
   }
   return ValidRect(x0, y0, x1, y1);
+}
+
+/// Two-stage preprocess for the alignment pipeline:
+///
+///   1. CLAHE expands the narrow midtone histogram that weathered stone
+///      occupies — gives both the DoG step and NCC more headroom.
+///   2. Difference-of-Gaussians band-pass strips the slowly-varying
+///      illumination (which changes per-frame as the light direction sweeps
+///      around the stone) and keeps only the illumination-invariant edge
+///      structure (groove shoulders, cracks, stone outline). Without this,
+///      NCC sees the raking-light highlights as the dominant signal and
+///      anti-correlates frames lit from opposite directions.
+///
+/// Returns a Uint8List in the same `width * height` layout, ready for the
+/// existing pyramid + NCC machinery.
+Uint8List _preprocessForAlignment(Uint8List src, int width, int height) {
+  final clahed = clahe(
+    src,
+    width,
+    height,
+    tilesX: 8,
+    tilesY: 8,
+    clipLimit: 2.0,
+  );
+  // Inline DoG (we don't import dog.dart here to avoid a dependency cycle
+  // — dog.dart depends on clahe.dart which is fine, but keeping registration
+  // self-contained simplifies the build graph).
+  final blurLow = gaussianBlurF(clahed, width, height, _alignDogSigmaLow);
+  final blurHigh = gaussianBlurF(clahed, width, height, _alignDogSigmaHigh);
+  final diffs = Float64List(clahed.length);
+  var maxAbs = 0.0;
+  for (var i = 0; i < clahed.length; i++) {
+    final d = (blurLow[i] - blurHigh[i]).abs();
+    diffs[i] = d;
+    if (d > maxAbs) maxAbs = d;
+  }
+  final out = Uint8List(clahed.length);
+  if (maxAbs < 1e-9) return out;
+  final inv = 255.0 / maxAbs;
+  for (var i = 0; i < clahed.length; i++) {
+    out[i] = (diffs[i] * inv).round().clamp(0, 255);
+  }
+  return out;
 }
 
 (double, double) _applyForward(FrameTransform t, double sx, double sy) {

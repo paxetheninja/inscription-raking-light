@@ -10,6 +10,7 @@ import '../../core/image_ops/registration.dart';
 import '../../core/image_ops/registration_orb.dart';
 import '../../core/image_ops/stack_reductions.dart';
 import '../../core/session/session_providers.dart';
+import '../../core/settings/settings_providers.dart';
 import 'results_gallery.dart';
 
 class StackScreen extends ConsumerWidget {
@@ -23,10 +24,9 @@ class StackScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Stack', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 4),
           Text(
-            'Pick a session to compute per-pixel reductions (downsampled preview).',
+            'Pick a session to compute per-pixel reductions, fusion, '
+            'PCA layers, normal map, and more.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -203,10 +203,14 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   String? _status;
   String? _error;
   StackPipelineOutput? _pipeline;
-  RegistrationMode _registrationMode = RegistrationMode.fast;
+  RegistrationMode? _registrationMode;
+
+  RegistrationMode get _effectiveRegMode =>
+      _registrationMode ?? ref.read(settingsProvider).defaultRegistration;
 
   Future<void> _compute() async {
     final store = ref.read(sessionStoreProvider);
+    final previewMaxEdge = ref.read(settingsProvider).previewMaxEdge;
     setState(() {
       _busy = true;
       _error = null;
@@ -223,7 +227,9 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       final previews = <GrayPreview>[];
       for (var i = 0; i < frames.length; i++) {
         setState(() => _status = 'Loading frame ${i + 1}/${frames.length}…');
-        previews.add(await loadGrayPreview(frames[i].path));
+        previews.add(
+          await loadGrayPreview(frames[i].path, maxEdge: previewMaxEdge),
+        );
       }
 
       final w = previews.first.width;
@@ -262,10 +268,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       // If the native ORB symbol fails to resolve (some opencv_dart
       // platform binaries ship without cv_ORB_create_1 etc.), we fall back
       // to the pure-Dart Accurate mode and tell the user.
-      var effectiveMode = _registrationMode;
+      var effectiveMode = _effectiveRegMode;
       List<FrameTransform>? preTransforms;
       List<double>? preScores;
-      if (_registrationMode == RegistrationMode.orb) {
+      if (_effectiveRegMode == RegistrationMode.orb) {
         setState(() => _status = 'Running ORB feature matching on '
             '${previews.length} frames…');
         try {
@@ -417,7 +423,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _RegistrationSelector(
-              value: _registrationMode,
+              value: _effectiveRegMode,
               onChanged: _busy
                   ? null
                   : (m) => setState(() => _registrationMode = m),

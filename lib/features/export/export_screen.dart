@@ -19,8 +19,6 @@ class ExportScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Export', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 4),
           Text(
             'Each session bundles `raw/` (original captures), `preview/` '
             '(computed enhancement PNGs), and `sidecar.json` into a single '

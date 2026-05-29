@@ -38,12 +38,6 @@ class _MeasureScreenState extends ConsumerState<MeasureScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text('Measure', style: Theme.of(context).textTheme.headlineMedium),
-            ],
-          ),
-          const SizedBox(height: 8),
           sessionList.when(
             loading: () => const LinearProgressIndicator(),
             error: (e, _) => Text('$e'),

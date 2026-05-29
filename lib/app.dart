@@ -1,21 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/settings/settings_providers.dart';
+import 'features/about/about_screen.dart';
 import 'features/capture/capture_screen.dart';
 import 'features/export/export_screen.dart';
 import 'features/measure/measure_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/stack/stack_screen.dart';
 
-class InscriptionRakingLightApp extends StatelessWidget {
+class InscriptionRakingLightApp extends ConsumerWidget {
   const InscriptionRakingLightApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode =
+        ref.watch(settingsProvider.select((s) => s.themeMode));
+    final lightScheme =
+        ColorScheme.fromSeed(seedColor: const Color(0xFF6E5B3A));
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6E5B3A),
+      brightness: Brightness.dark,
+    );
     return MaterialApp(
-      title: 'Streiflicht',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6E5B3A)),
-        useMaterial3: true,
-      ),
+      title: 'Stela',
+      theme: ThemeData(colorScheme: lightScheme, useMaterial3: true),
+      darkTheme: ThemeData(colorScheme: darkScheme, useMaterial3: true),
+      themeMode: themeMode,
       home: const HomeShell(),
     );
   }
@@ -39,15 +50,57 @@ class _HomeShellState extends State<HomeShell> {
   ];
 
   static const _destinations = <NavigationDestination>[
-    NavigationDestination(icon: Icon(Icons.camera_alt_outlined), label: 'Capture'),
-    NavigationDestination(icon: Icon(Icons.layers_outlined), label: 'Stack'),
-    NavigationDestination(icon: Icon(Icons.straighten_outlined), label: 'Measure'),
-    NavigationDestination(icon: Icon(Icons.ios_share_outlined), label: 'Export'),
+    NavigationDestination(
+        icon: Icon(Icons.camera_alt_outlined), label: 'Capture'),
+    NavigationDestination(
+        icon: Icon(Icons.layers_outlined), label: 'Stack'),
+    NavigationDestination(
+        icon: Icon(Icons.straighten_outlined), label: 'Measure'),
+    NavigationDestination(
+        icon: Icon(Icons.ios_share_outlined), label: 'Export'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_destinations[_index].label),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (v) {
+              switch (v) {
+                case 'settings':
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ));
+                case 'about':
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const AboutScreen(),
+                  ));
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings_outlined),
+                  title: Text('Settings'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'about',
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('About Stela'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       body: SafeArea(child: _tabs[_index]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,

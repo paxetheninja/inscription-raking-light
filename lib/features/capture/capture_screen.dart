@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/session/session.dart';
 import '../../core/session/session_providers.dart';
+import '../../core/settings/settings_providers.dart';
 import 'light_direction.dart';
 
 /// Capture tab — idle until the user starts (or resumes) a session, then
@@ -34,11 +35,21 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   String? _lastShotPath;
   LightDirection _light = const LightDirection();
   bool _autoAdvance = true;
+  bool _autoAdvanceInitialised = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_autoAdvanceInitialised) {
+      _autoAdvance = ref.read(settingsProvider).autoAdvanceDefault;
+      _autoAdvanceInitialised = true;
+    }
   }
 
   @override
@@ -379,8 +390,6 @@ class _IdleView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Capture', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 12),
           Text(
             'Mount the phone on a tripod or hold it steady. An assistant '
             'sweeps a raking light across the stone. Lock exposure & focus '

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Apple's privacy manifest. Required for App Store submission since
+	  May 2024. Declares:
+	    * the "required-reason APIs" the app touches (with reason codes
+	      from Apple's allowed list)
+	    * that the app does not collect data, does not track, and lists no
+	      tracking domains.
+	  Companion documentation:
+	    https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!--
+			  File timestamp APIs: enumerating session directories
+			  (Directory.list) and checking sidecar/preview file mtimes
+			  via the dart:io File API ends up calling NSFileManager
+			  attributes-of-item APIs underneath.
+			  Reason code C617.1: "Display file timestamps to the user
+			  inside the app."  We surface "captured_at" timestamps from
+			  the sidecar in the Stack and Export tabs.
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  Disk-space APIs: the Export tab calls `File.length()` /
+			  `Directory.list()` to total each session's on-disk size,
+			  shown as "12.3 MB" on the export tiles.
+			  Reason code 85F4.1: "Display free disk space to the user
+			  inside the app."
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>85F4.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!--
+			  UserDefaults: the shared_preferences plugin wraps
+			  NSUserDefaults for persisted settings (theme, default
+			  registration mode, hasSeenTutorial, etc.).
+			  Reason code CA92.1: "Access info from the same app, app
+			  extension, or App Group."
+			-->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

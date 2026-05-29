@@ -47,6 +47,15 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture raking-light bursts of inscriptions.</string>
+	<!--
+	  Encryption export compliance. Stela only uses the platform's built-in
+	  HTTPS / TLS through `url_launcher` (for the About-tab links). That is
+	  exempt under the Bureau of Industry and Security's "mass-market"
+	  classification, so we set this to false to skip the per-build
+	  compliance prompt at App Store Connect upload time.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Used to save exported raking-light session bundles.</string>
 	<key>UIFileSharingEnabled</key>

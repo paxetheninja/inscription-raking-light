@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:archive/archive_io.dart';
+
 import '../image_ops/registration.dart';
 import '../sidecar/sidecar_schema.dart';
 import 'session.dart';
@@ -80,6 +82,108 @@ class SessionStore {
     final json =
         const JsonEncoder.withIndent('  ').convert(updated.toJson());
     await f.writeAsString(json);
+  }
+
+  /// Import a session zip (one produced by [SessionArchiver]) into the
+  /// store. Returns the final session id used on disk.
+  ///
+  /// Collision handling: if a session with the same id already exists, the
+  /// new one is given a `_imp-<hex-timestamp>` suffix so re-importing the
+  /// same zip produces a fresh session rather than overwriting.
+  ///
+  /// Errors:
+  ///   - Zip doesn't exist → StateError
+  ///   - Zip has no recognisable session folder → StateError
+  ///   - Sidecar.json missing inside the zip → StateError
+  Future<String> importSessionFromZip(File zip) async {
+    if (!await zip.exists()) {
+      throw StateError('Import file does not exist: ${zip.path}');
+    }
+    final tmpRoot = await Directory.systemTemp.createTemp('stela_import_');
+    try {
+      // 1. Decode the zip into a temp directory.
+      await extractFileToDisk(zip.path, tmpRoot.path);
+
+      // 2. Locate the session folder. The exporter always writes one
+      //    top-level dir named after the session id, but be defensive in
+      //    case a user hand-zipped the contents.
+      final entries = await tmpRoot.list().toList();
+      Directory? extracted;
+      final topDirs = entries.whereType<Directory>().toList();
+      if (topDirs.length == 1) {
+        extracted = topDirs.first;
+      } else if (topDirs.isEmpty) {
+        // No top-level folder — treat the tmpRoot itself as the session
+        // root (user zipped raw/ + sidecar.json directly).
+        extracted = tmpRoot;
+      } else {
+        throw StateError(
+          'Zip has ${topDirs.length} top-level folders — expected one '
+          'session folder.',
+        );
+      }
+
+      // 3. Validate it looks like a Stela session.
+      final sidecarSource = File(p.join(extracted.path, 'sidecar.json'));
+      if (!await sidecarSource.exists()) {
+        throw StateError(
+          'sidecar.json not found in the zip — not a Stela session export.',
+        );
+      }
+      Map<String, dynamic> json;
+      try {
+        json = jsonDecode(await sidecarSource.readAsString())
+            as Map<String, dynamic>;
+      } catch (e) {
+        throw StateError('sidecar.json is not valid JSON: $e');
+      }
+      var sessionId = json['session_id'] as String? ?? p.basename(extracted.path);
+      if (sessionId.isEmpty) {
+        sessionId = 's_imp_${DateTime.now().millisecondsSinceEpoch}';
+      }
+
+      // 4. Handle id collision.
+      final destRoot = await _root();
+      var dest = Directory(p.join(destRoot.path, sessionId));
+      if (await dest.exists() && (await dest.list().isEmpty) == false) {
+        final stamp = DateTime.now()
+            .millisecondsSinceEpoch
+            .toRadixString(16);
+        sessionId = '${sessionId}_imp-$stamp';
+        dest = Directory(p.join(destRoot.path, sessionId));
+        // Rewrite the sidecar so the id inside matches the on-disk id.
+        json['session_id'] = sessionId;
+        await sidecarSource.writeAsString(
+          const JsonEncoder.withIndent('  ').convert(json),
+        );
+      }
+
+      // 5. Move the extracted folder into the sessions directory.
+      await dest.create(recursive: true);
+      await _copyDirContents(extracted, dest);
+
+      return sessionId;
+    } finally {
+      if (await tmpRoot.exists()) {
+        try {
+          await tmpRoot.delete(recursive: true);
+        } catch (_) {/* best-effort temp cleanup */}
+      }
+    }
+  }
+
+  /// Recursive copy of `src`'s *contents* (not the dir itself) into `dst`.
+  Future<void> _copyDirContents(Directory src, Directory dst) async {
+    await for (final entity in src.list(recursive: true)) {
+      final rel = p.relative(entity.path, from: src.path);
+      final dstPath = p.join(dst.path, rel);
+      if (entity is Directory) {
+        await Directory(dstPath).create(recursive: true);
+      } else if (entity is File) {
+        await Directory(p.dirname(dstPath)).create(recursive: true);
+        await entity.copy(dstPath);
+      }
+    }
   }
 
   Future<int> sessionByteSize(String sessionId) async {

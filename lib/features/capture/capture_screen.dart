@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -204,6 +205,37 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     }
   }
 
+  Future<void> _importSession() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['zip'],
+        withData: false, // we need the path, not the bytes
+      );
+      if (picked == null || picked.files.single.path == null) {
+        return; // user cancelled
+      }
+      final store = ref.read(sessionStoreProvider);
+      final newId = await store.importSessionFromZip(
+        File(picked.files.single.path!),
+      );
+      ref.invalidate(sessionListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported as "$newId"')),
+        );
+      }
+    } catch (e) {
+      _error = '$e';
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _endSession() async {
     await _controller?.dispose();
     _controller = null;
@@ -302,6 +334,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       return _IdleView(
         onStart: _busy ? null : _startSession,
         onResume: _busy ? null : _resumeSession,
+        onImport: _busy ? null : _importSession,
         busy: _busy,
         error: _error,
       );
@@ -328,12 +361,14 @@ class _IdleView extends StatelessWidget {
   const _IdleView({
     required this.onStart,
     required this.onResume,
+    required this.onImport,
     required this.busy,
     this.error,
   });
 
   final VoidCallback? onStart;
   final VoidCallback? onResume;
+  final VoidCallback? onImport;
   final bool busy;
   final String? error;
 
@@ -363,6 +398,12 @@ class _IdleView extends StatelessWidget {
             onPressed: onResume,
             icon: const Icon(Icons.history),
             label: const Text('Resume existing session'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onImport,
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('Import session from .zip'),
           ),
           if (error != null) ...[
             const SizedBox(height: 16),

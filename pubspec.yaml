@@ -1,7 +1,7 @@
 name: inscription_raking_light
 description: "Mobile companion for raking-light documentation of inscriptions."
 publish_to: 'none'
-version: 0.10.2+12
+version: 0.10.3+13
 
 environment:
   sdk: ^3.10.7
@@ -28,6 +28,10 @@ dependencies:
 
   # Session export — zip the session folder for share-sheet handoff (v0.6)
   archive: ^4.0.0
+
+  # Session import — pick a .zip to load a previously-exported session
+  # (survives app uninstall via export → reinstall → import).
+  file_picker: ^8.1.4
 
   # Feature-based registration for v0.9 (ORB + RANSAC similarity transform).
   # Native binaries fetched via Dart Native Assets (requires Dart 3.10+).

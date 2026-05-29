@@ -66,17 +66,27 @@ class SessionStore {
     }
   }
 
-  Future<void> renameLabel(String sessionId, String newLabel) async {
+  Future<void> renameLabel(String sessionId, String newLabel) =>
+      updateDetails(sessionId, label: newLabel);
+
+  /// Update label and/or notes on a session in one sidecar write. Pass
+  /// `notes: ''` to clear (any null leaves the existing value alone).
+  Future<void> updateDetails(
+    String sessionId, {
+    String? label,
+    String? notes,
+  }) async {
     final sc = await readSidecar(sessionId);
     if (sc == null) throw StateError('No sidecar for session $sessionId');
     final updated = SidecarV1(
       sessionId: sc.sessionId,
-      label: newLabel,
+      label: label ?? sc.label,
       capturedAt: sc.capturedAt,
       deviceModel: sc.deviceModel,
       scaleMmPerPixel: sc.scaleMmPerPixel,
-      notes: sc.notes,
+      notes: notes ?? sc.notes,
       frames: sc.frames,
+      registration: sc.registration,
     );
     final f = await sidecarFile(sessionId);
     final json =

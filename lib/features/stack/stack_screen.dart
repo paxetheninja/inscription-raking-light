@@ -87,24 +87,73 @@ class _SessionTile extends ConsumerWidget {
     return FutureBuilder(
       future: store.readSidecar(sessionId),
       builder: (ctx, snap) {
-        final sub = snap.hasData && snap.data != null
-            ? '${snap.data!.frames.length} frames · ${snap.data!.capturedAt}'
+        final sc = snap.data;
+        final framesAndDate = sc != null
+            ? '${sc.frames.length} frames · ${sc.capturedAt}'
             : sessionId;
-        final title = snap.hasData && snap.data != null && snap.data!.label.isNotEmpty
-            ? snap.data!.label
+        final notes = sc?.notes;
+        // Show the first line of notes (truncated) on a second subtitle row
+        // so the tile carries real metadata, not just plumbing data.
+        final firstNoteLine = (notes == null || notes.isEmpty)
+            ? null
+            : notes.split('\n').first.trim();
+        final subtitle = firstNoteLine == null
+            ? Text(framesAndDate,
+                maxLines: 1, overflow: TextOverflow.ellipsis)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(framesAndDate,
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      Icon(Icons.sticky_note_2_outlined,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.outline),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          firstNoteLine,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outline,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+        final title = sc != null && sc.label.isNotEmpty
+            ? sc.label
             : sessionId;
         return ListTile(
           leading: const Icon(Icons.collections_outlined),
           title: Text(title),
-          subtitle: Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: subtitle,
+          isThreeLine: firstNoteLine != null,
           trailing: PopupMenuButton<String>(
             tooltip: 'Session actions',
             onSelected: (v) async {
               switch (v) {
-                case 'rename':
-                  final newLabel = await _promptRename(context, title);
-                  if (newLabel != null && newLabel.isNotEmpty) {
-                    await store.renameLabel(sessionId, newLabel);
+                case 'edit':
+                  final result = await _promptEditDetails(
+                    context,
+                    initialLabel: title,
+                    initialNotes: sc?.notes ?? '',
+                  );
+                  if (result != null) {
+                    await store.updateDetails(
+                      sessionId,
+                      label: result.label.isEmpty ? null : result.label,
+                      notes: result.notes,
+                    );
                     ref.invalidate(sessionListProvider);
                   }
                 case 'delete':
@@ -116,7 +165,7 @@ class _SessionTile extends ConsumerWidget {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename label')),
+              PopupMenuItem(value: 'edit', child: Text('Edit details')),
               PopupMenuItem(value: 'delete', child: Text('Delete session')),
             ],
           ),
@@ -134,16 +183,51 @@ class _SessionTile extends ConsumerWidget {
   }
 }
 
-Future<String?> _promptRename(BuildContext context, String current) {
-  final ctrl = TextEditingController(text: current);
-  return showDialog<String>(
+class _EditDetailsResult {
+  const _EditDetailsResult({required this.label, required this.notes});
+  final String label;
+  final String notes;
+}
+
+Future<_EditDetailsResult?> _promptEditDetails(
+  BuildContext context, {
+  required String initialLabel,
+  required String initialNotes,
+}) {
+  final labelCtrl = TextEditingController(text: initialLabel);
+  final notesCtrl = TextEditingController(text: initialNotes);
+  return showDialog<_EditDetailsResult>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Rename session'),
-      content: TextField(
-        controller: ctrl,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Label'),
+      title: const Text('Edit session'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Label',
+                helperText: 'Stone name, find no., ...',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: notesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Notes',
+                helperText:
+                    'Site, condition, light source, anything else worth '
+                    'remembering — included in the sidecar.',
+                alignLabelWithHint: true,
+              ),
+              minLines: 3,
+              maxLines: 6,
+              keyboardType: TextInputType.multiline,
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -151,7 +235,12 @@ Future<String?> _promptRename(BuildContext context, String current) {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+          onPressed: () => Navigator.of(ctx).pop(
+            _EditDetailsResult(
+              label: labelCtrl.text.trim(),
+              notes: notesCtrl.text.trim(),
+            ),
+          ),
           child: const Text('Save'),
         ),
       ],

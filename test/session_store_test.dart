@@ -61,6 +61,28 @@ void main() {
     expect(sc?.label, 'new label');
   });
 
+  test('updateDetails writes label and notes together', () async {
+    final session = await store.createSession(label: 'A', deviceModel: 'x');
+    await store.updateDetails(session.id,
+        label: 'Weber 328', notes: 'Top half eroded; capture mid-morning.');
+    final sc = await store.readSidecar(session.id);
+    expect(sc?.label, 'Weber 328');
+    expect(sc?.notes, 'Top half eroded; capture mid-morning.');
+  });
+
+  test('updateDetails preserves the unchanged field', () async {
+    final session = await store.createSession(label: 'orig', deviceModel: 'x');
+    await store.updateDetails(session.id, notes: 'first note');
+    var sc = await store.readSidecar(session.id);
+    expect(sc?.label, 'orig'); // untouched
+    expect(sc?.notes, 'first note');
+
+    await store.updateDetails(session.id, label: 'updated');
+    sc = await store.readSidecar(session.id);
+    expect(sc?.label, 'updated');
+    expect(sc?.notes, 'first note'); // still preserved
+  });
+
   test('updateScale persists mm/pixel', () async {
     final session = await store.createSession(label: 'x', deviceModel: 'x');
     await store.updateScale(session.id, 0.0421);

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +10,7 @@ class AboutScreen extends StatelessWidget {
 
   static const _sourceUrl =
       'https://github.com/paxetheninja/inscription-raking-light';
+  static const _supportEmail = 'florian.wachter698@gmail.com';
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +72,14 @@ class AboutScreen extends StatelessWidget {
                 onTap: () => _openUrl(_sourceUrl),
               ),
               ListTile(
+                leading: const Icon(Icons.bug_report_outlined),
+                title: const Text('Report a problem'),
+                subtitle: const Text(
+                    'Opens email pre-filled with app version and device info'),
+                trailing: const Icon(Icons.open_in_new, size: 18),
+                onTap: () => _reportProblem(context, info),
+              ),
+              ListTile(
                 leading: const Icon(Icons.gavel_outlined),
                 title: const Text('Open-source licenses'),
                 subtitle: const Text(
@@ -101,6 +113,44 @@ class AboutScreen extends StatelessWidget {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _reportProblem(BuildContext context, PackageInfo? info) async {
+    final version = info == null ? 'unknown' : 'v${info.version}+${info.buildNumber}';
+    final platform = kIsWeb
+        ? 'web'
+        : (Platform.isIOS
+            ? 'iOS'
+            : Platform.isAndroid
+                ? 'Android'
+                : Platform.operatingSystem);
+    final body = '''
+Describe what went wrong:
+
+
+
+---
+App version: $version
+Platform: $platform
+''';
+    final uri = Uri(
+      scheme: 'mailto',
+      path: _supportEmail,
+      queryParameters: {
+        'subject': 'Stela: bug report ($version)',
+        'body': body,
+      },
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'No mail app available. Reach out to $_supportEmail '
+          'or open an issue on GitHub.',
+        )),
+      );
     }
   }
 }

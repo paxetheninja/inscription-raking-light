@@ -8,6 +8,7 @@ import 'features/export/export_screen.dart';
 import 'features/measure/measure_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/stack/stack_screen.dart';
+import 'features/tutorial/tutorial_screen.dart';
 
 class InscriptionRakingLightApp extends ConsumerWidget {
   const InscriptionRakingLightApp({super.key});
@@ -32,15 +33,36 @@ class InscriptionRakingLightApp extends ConsumerWidget {
   }
 }
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+  bool _tutorialShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _tutorialShown) return;
+      final hasSeen = ref.read(settingsProvider).hasSeenTutorial;
+      if (!hasSeen) {
+        _tutorialShown = true;
+        _openTutorial();
+      }
+    });
+  }
+
+  void _openTutorial() {
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => const TutorialScreen(),
+    ));
+  }
 
   static const _tabs = <Widget>[
     CaptureScreen(),
@@ -66,6 +88,11 @@ class _HomeShellState extends State<HomeShell> {
       appBar: AppBar(
         title: Text(_destinations[_index].label),
         actions: [
+          IconButton(
+            tooltip: 'Tutorial',
+            icon: const Icon(Icons.help_outline),
+            onPressed: _openTutorial,
+          ),
           PopupMenuButton<String>(
             tooltip: 'More',
             onSelected: (v) {

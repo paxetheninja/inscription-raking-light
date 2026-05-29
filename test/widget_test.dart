@@ -7,7 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('Home shell renders the four feature tabs', (tester) async {
-    SharedPreferences.setMockInitialValues({});
+    // hasSeenTutorial=true so the first-launch carousel doesn't pop and
+    // dominate the widget tree we're testing.
+    SharedPreferences.setMockInitialValues({'hasSeenTutorial': true});
     final prefs = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(

@@ -20,7 +20,7 @@ for archaeological epigraphy — documenting Roman inscriptions on stone
 with raking-light photography.
 
 - Source code: <https://github.com/paxetheninja/inscription-raking-light>
-- Contact: `florian.wachter698@gmail.com`
+- Contact: `pixelpace.studio@outlook.com`
 
 ## What Stela does and does not do
 
@@ -108,4 +108,4 @@ visible in the Git history at
 ## Contact
 
 Questions, concerns, or requests about this policy:
-`florian.wachter698@gmail.com`.
+`pixelpace.studio@outlook.com`.

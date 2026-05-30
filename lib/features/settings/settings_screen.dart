@@ -137,7 +137,7 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  static const _supportEmail = 'florian.wachter698@gmail.com';
+  static const _supportEmail = 'pixelpace.studio@outlook.com';
 
   Future<void> _reportProblem(BuildContext context) async {
     final info = await PackageInfo.fromPlatform();

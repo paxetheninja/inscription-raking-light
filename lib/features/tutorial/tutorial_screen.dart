@@ -10,13 +10,18 @@ class TutorialScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // Tighter paddings + a slightly smaller cover icon so the body has more
+    // vertical room on shorter phones (iPhone SE, older Android). The body
+    // widget itself also scrolls, so anything that still doesn't fit can
+    // be flicked into view rather than triggering a RenderFlex overflow.
     final pageDecoration = PageDecoration(
-      titleTextStyle: Theme.of(context).textTheme.headlineMedium!,
-      bodyTextStyle: Theme.of(context).textTheme.bodyLarge!.copyWith(
+      titleTextStyle: Theme.of(context).textTheme.headlineSmall!,
+      bodyTextStyle: Theme.of(context).textTheme.bodyMedium!.copyWith(
             color: scheme.onSurfaceVariant,
           ),
-      bodyPadding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      imagePadding: const EdgeInsets.only(top: 40),
+      titlePadding: const EdgeInsets.only(top: 8, bottom: 4),
+      bodyPadding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+      imagePadding: const EdgeInsets.only(top: 16),
       pageColor: scheme.surface,
     );
 
@@ -135,14 +140,20 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final p in paragraphs) ...[
-          Text(p, style: Theme.of(context).textTheme.bodyLarge),
-          const SizedBox(height: 12),
+    // SingleChildScrollView guarantees we never hit RenderFlex overflow
+    // when the body + image + title + dots bar don't all fit on a short
+    // phone. Users can flick the body into view if it's a bit too tall.
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final p in paragraphs) ...[
+            Text(p, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 10),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -156,13 +167,13 @@ class _CoverIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 160,
-        height: 160,
+        width: 120,
+        height: 120,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: color.withValues(alpha: 0.12),
         ),
-        child: Icon(icon, size: 80, color: color),
+        child: Icon(icon, size: 60, color: color),
       ),
     );
   }

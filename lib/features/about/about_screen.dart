@@ -10,7 +10,7 @@ class AboutScreen extends StatelessWidget {
 
   static const _sourceUrl =
       'https://github.com/paxetheninja/inscription-raking-light';
-  static const _supportEmail = 'florian.wachter698@gmail.com';
+  static const _supportEmail = 'pixelpace.studio@outlook.com';
 
   @override
   Widget build(BuildContext context) {
